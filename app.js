@@ -2,7 +2,7 @@
 'use strict';
 
 /*
- * JC NEON STUDIO 2.1
+ * JC NEON STUDIO 2.2
  * JADE & CLARKE
  *
  * Twitch OAuth 2.0 mit PKCE
@@ -37,504 +37,695 @@
 
   const AUTH_STORAGE_KEY = 'jc_neon_twitch_auth';
   const PKCE_STORAGE_KEY = 'jc_neon_twitch_pkce';
-
-  // ==========================================
-  // STUDIO KONFIGURATION
-  // ==========================================
-
   const STORAGE_KEY = 'jc_neon_studio_v2';
   const OLD_STORAGE_KEY = 'jc_streamtools_neon_v1';
-  const OVERLAY_CHANNEL = 'jc_streamtools_neon';
 
-  const defaults = {
-    studioUsername: 'faulie_gamer',
-    studioDisplayName: 'FAULIE_GAMER',
-    testUser: 'FaulieFan',
-    testMessage: 'Hey Faulie! Dein Stream sieht heute mega aus! 💜',
-    alertUser: 'NeonSloth',
-    chatInput: '',
+  const DEFAULTS = {
     ttsEnabled: true,
-    readNames: true,
+    voice: '',
     volume: 85,
     rate: 100,
-    voiceName: '',
+    readNames: true,
     followEnabled: true,
     subEnabled: true,
     bitsEnabled: true,
     duration: 6,
     accent: 'purple',
-    motion: true
+    motion: true,
+    testUser: 'FaulieFan',
+    testMessage:
+      'Hey Faulie! Dein Stream sieht heute mega aus! 💜',
+    alertUser: 'NeonSloth',
+    chatInput: '',
+    soundVolume: 80,
+    soundEnabled: true,
+    showChatOverlay: true,
+    showAlertOverlay: true,
+    chatPosition: 'bottom-left',
+    alertPosition: 'top-center',
+    overlayScale: 100,
+    overlayChatLimit: 6,
+    overlayChatDuration: 18,
+    overlayChatWidth: 420,
+    overlayAlertWidth: 500,
+    overlayShowAvatar: true,
+    overlayShowBadges: true,
+    overlayChatAnimation: 'slide',
+    overlayAlertAnimation: 'pop',
+    overlayTheme: 'neon',
+    overlayFontSize: 16,
+    overlayOpacity: 100,
+    overlayChatBackground: true,
+    overlayAlertBackground: true,
+    overlayChatSound: false,
+    overlayAlertSound: true,
+    overlayTestUser: 'NeonSloth',
+    overlayTestMessage:
+      'Moin Faulie! Das neue Studio sieht mega aus! 💜'
   };
 
-  const soundFiles = {
+  const SOUND_FILES = {
     follow: 'assets/sounds/jc_alert_follower.m4a',
     sub: 'assets/sounds/jc_alert_sub.m4a',
     bits: 'assets/sounds/jc_alert_bits.m4a'
   };
 
-  const alertInfo = {
-    follow: {
-      title: 'NEUER FOLLOWER',
-      symbol: '♡',
-      description: 'folgt deinem Kanal!'
-    },
-    sub: {
-      title: 'NEUES ABO',
-      symbol: '★',
-      description: 'hat deinen Kanal abonniert!'
-    },
-    bits: {
-      title: 'BITS CHEER',
-      symbol: '◆',
-      description: 'hat Bits gespendet!'
-    }
+  const ALERT_LABELS = {
+    follow: 'NEUER FOLLOWER',
+    sub: 'NEUES ABONNEMENT',
+    bits: 'BITS ERHALTEN'
   };
 
-  const pages = {
-    dashboard: 'Dein Stream. Deine Kontrolle.',
-    tts: 'Chat & Sprachausgabe',
-    alerts: 'Stream-Alerts',
-    overlay: 'OBS-Overlays',
-    settings: 'Dein Studio. Deine Regeln.'
+  const ALERT_ICONS = {
+    follow: '♡',
+    sub: '★',
+    bits: '◆'
   };
 
   // ==========================================
-  // SPEICHER
+  // SPEICHER / EINSTELLUNGEN
   // ==========================================
 
   function readStorage(key, storage = localStorage) {
     try {
       const raw = storage.getItem(key);
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-
-      return parsed &&
-        typeof parsed === 'object' &&
-        !Array.isArray(parsed)
-          ? parsed
-          : null;
+      return raw ? JSON.parse(raw) : null;
     } catch (error) {
-      console.warn('Speicherfehler:', error);
+      console.warn(
+        'Gespeicherte Daten konnten nicht gelesen werden:',
+        key,
+        error
+      );
       return null;
     }
   }
 
-  const existingSettings =
+  function writeStorage(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (error) {
+      console.warn(
+        'Daten konnten nicht gespeichert werden:',
+        key,
+        error
+      );
+      return false;
+    }
+  }
+
+  const storedSettings =
     readStorage(STORAGE_KEY) ||
     readStorage(OLD_STORAGE_KEY) ||
     {};
 
   let settings = {
-    ...defaults,
-    ...existingSettings
+    ...DEFAULTS,
+    ...storedSettings
   };
 
-  let toastTimer;
+  function saveSettings() {
+    writeStorage(STORAGE_KEY, settings);
+  }
 
-  function toast(message) {
-    const el = $('toast');
+  function updateSetting(key, value) {
+    settings[key] = value;
+    saveSettings();
+  }
 
-    if (!el) {
-      console.info('[JC Neon Studio]', message);
+  function resetSettings() {
+    const confirmed = confirm(
+      'Möchtest du alle Studio-Einstellungen wirklich zurücksetzen? ' +
+      'Deine Twitch-Verbindung bleibt dabei erhalten.'
+    );
+
+    if (!confirmed) return;
+
+    settings = { ...DEFAULTS };
+    saveSettings();
+
+    applySettingsToUI();
+    applyTheme();
+    applyMotion();
+    updateTTSStatus();
+    updateSoundStatus();
+    updateOverlayStatus();
+    syncOverlaySettings();
+
+    toast('Studio-Einstellungen wurden zurückgesetzt.');
+  }
+
+  // ==========================================
+  // STATUS / TOAST
+  // ==========================================
+
+  let toastTimer = null;
+
+  function toast(message, duration = 3500) {
+    const element = $('toast');
+
+    if (!element) {
+      console.log(message);
       return;
     }
 
-    el.textContent = message;
-    el.classList.add('show');
+    element.textContent = message;
+    element.classList.add('show');
 
     clearTimeout(toastTimer);
 
     toastTimer = setTimeout(() => {
-      el.classList.remove('show');
-    }, 3500);
-  }
-
-  function persist() {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify(settings)
-      );
-    } catch (error) {
-      console.warn('Speichern fehlgeschlagen:', error);
-      toast('Einstellungen konnten nicht gespeichert werden.');
-    }
+      element.classList.remove('show');
+    }, duration);
   }
 
   function setText(id, value) {
-    const el = $(id);
-    if (el) el.textContent = value;
+    const element = $(id);
+    if (element) element.textContent = value;
+  }
+
+  function setValue(id, value) {
+    const element = $(id);
+    if (element) element.value = value;
+  }
+
+  function setChecked(id, value) {
+    const element = $(id);
+    if (element) element.checked = Boolean(value);
+  }
+
+  function getNumber(id, fallback = 0) {
+    const element = $(id);
+    if (!element) return fallback;
+
+    const value = Number(element.value);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function escapeHTML(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function formatPercent(value) {
+    return `${Math.round(Number(value) || 0)} %`;
   }
 
   // ==========================================
   // NAVIGATION
   // ==========================================
 
-  function navigate(page) {
-    if (!pages[page]) return;
+  const PAGE_TITLES = {
+    dashboard: 'Dein Stream. Deine Kontrolle.',
+    tts: 'Chat & Text-to-Speech',
+    alerts: 'Stream-Alerts',
+    overlay: 'OBS-Overlays',
+    settings: 'Studio-Einstellungen'
+  };
 
-    document.querySelectorAll('.page').forEach(el => {
-      el.classList.toggle('active', el.id === page);
-    });
+  function showPage(pageId) {
+    const page = $(pageId);
+    if (!page) return;
 
-    document.querySelectorAll('.nav').forEach(el => {
-      el.classList.toggle(
+    document.querySelectorAll('.page').forEach(element => {
+      element.classList.toggle(
         'active',
-        el.dataset.page === page
+        element.id === pageId
       );
     });
 
-    setText('pageTitle', pages[page]);
+    document.querySelectorAll('.nav').forEach(button => {
+      button.classList.toggle(
+        'active',
+        button.dataset.page === pageId
+      );
+    });
 
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth'
+    setText(
+      'pageTitle',
+      PAGE_TITLES[pageId] || 'JC Neon Studio'
+    );
+
+    if (pageId === 'overlay') {
+      refreshOverlayPreview();
+    }
+  }
+
+  function setupNavigation() {
+    document.querySelectorAll('[data-page]').forEach(button => {
+      button.addEventListener('click', () => {
+        showPage(button.dataset.page);
+      });
+    });
+
+    document.querySelectorAll('[data-goto]').forEach(button => {
+      button.addEventListener('click', () => {
+        showPage(button.dataset.goto);
+      });
     });
   }
 
-  document.querySelectorAll('[data-page]').forEach(button => {
-    button.addEventListener('click', () => {
-      navigate(button.dataset.page);
-    });
-  });
-
-  document.querySelectorAll('[data-goto]').forEach(button => {
-    button.addEventListener('click', () => {
-      navigate(button.dataset.goto);
-    });
-  });
-
   // ==========================================
-  // EINSTELLUNGEN
+  // DESIGN / THEME
   // ==========================================
 
-  const checkboxKeys = [
-    'ttsEnabled',
-    'readNames',
-    'followEnabled',
-    'subEnabled',
-    'bitsEnabled',
-    'motion'
-  ];
+  function applyTheme() {
+    document.documentElement.dataset.accent =
+      settings.accent || 'purple';
 
-  const rangeKeys = [
-    'volume',
-    'rate',
-    'duration'
-  ];
+    document.body.dataset.accent =
+      settings.accent || 'purple';
+  }
 
-  const textKeys = [
-    'studioUsername',
-    'studioDisplayName',
-    'testUser',
-    'testMessage',
-    'alertUser',
-    'chatInput'
-  ];
-
-  function applySettings() {
-    checkboxKeys.forEach(key => {
-      if ($(key)) {
-        $(key).checked = Boolean(settings[key]);
-      }
-    });
-
-    rangeKeys.forEach(key => {
-      if ($(key)) {
-        $(key).value = settings[key];
-      }
-    });
-
-    textKeys.forEach(key => {
-      if ($(key)) {
-        $(key).value = settings[key] ?? '';
-      }
-    });
-
-    if ($('accent')) {
-      $('accent').value = settings.accent;
-    }
-
-    setText('volumeValue', settings.volume + ' %');
-
-    setText(
-      'rateValue',
-      (settings.rate / 100).toFixed(1) + '×'
-    );
-
-    setText(
-      'durationValue',
-      settings.duration + ' Sekunden'
-    );
-
-    setText(
-      'ttsStatus',
-      settings.ttsEnabled ? 'AKTIV' : 'AUS'
-    );
-
-    setText(
-      'studioProfileName',
-      settings.studioDisplayName || 'FAULIE_GAMER'
-    );
-
-    document.body.classList.toggle(
-      'no-motion',
+  function applyMotion() {
+    document.documentElement.classList.toggle(
+      'reduce-motion',
       !settings.motion
     );
 
-    const accentColors = {
-      purple: '#b43cff',
-      cyan: '#00dfff',
-      pink: '#ff3baf'
-    };
-
-    document.documentElement.style.setProperty(
-      '--accent',
-      accentColors[settings.accent] || accentColors.purple
+    document.body.classList.toggle(
+      'reduce-motion',
+      !settings.motion
     );
   }
 
-  function bindSettings() {
-    checkboxKeys.forEach(key => {
-      $(key)?.addEventListener('change', event => {
-        settings[key] = event.target.checked;
-        persist();
-        applySettings();
+  function setupThemeControls() {
+    const accent = $('accent');
+
+    if (accent) {
+      accent.addEventListener('change', () => {
+        updateSetting('accent', accent.value);
+        applyTheme();
+        syncOverlaySettings();
       });
-    });
+    }
 
-    rangeKeys.forEach(key => {
-      $(key)?.addEventListener('input', event => {
-        settings[key] = Number(event.target.value);
-        persist();
-        applySettings();
+    const motion = $('motion');
+
+    if (motion) {
+      motion.addEventListener('change', () => {
+        updateSetting('motion', motion.checked);
+        applyMotion();
+        syncOverlaySettings();
       });
-    });
+    }
 
-    textKeys.forEach(key => {
-      $(key)?.addEventListener('input', event => {
-        settings[key] = event.target.value;
-        persist();
-
-        if (key === 'studioDisplayName') {
-          setText(
-            'studioProfileName',
-            settings.studioDisplayName || 'FAULIE_GAMER'
-          );
-        }
-      });
-    });
-
-    $('accent')?.addEventListener('change', event => {
-      settings.accent = event.target.value;
-      persist();
-      applySettings();
-    });
+    $('resetSettings')?.addEventListener(
+      'click',
+      resetSettings
+    );
   }
 
-  bindSettings();
-  applySettings();
-  persist();
+  // ==========================================
+  // EMOJI-FILTER FÜR TTS
+  // ==========================================
+
+  function cleanTTSMessage(value) {
+    let text = String(value ?? '');
+
+    text = text.replace(
+      /https?:\/\/\S+/gi,
+      ''
+    );
+
+    text = text.replace(
+      /www\.\S+/gi,
+      ''
+    );
+
+    text = text.replace(
+      /[\u{1F1E6}-\u{1F1FF}]{2}/gu,
+      ''
+    );
+
+    text = text.replace(
+      /[0-9#*]\uFE0F?\u20E3/gu,
+      ''
+    );
+
+    text = text.replace(
+      /[\u{1F3FB}-\u{1F3FF}]/gu,
+      ''
+    );
+
+    text = text.replace(
+      /[\uFE0E\uFE0F\u200D]/gu,
+      ''
+    );
+
+    text = text.replace(
+      /\p{Extended_Pictographic}/gu,
+      ''
+    );
+
+    text = text.replace(
+      /[\u{E0020}-\u{E007F}]/gu,
+      ''
+    );
+
+    text = text.replace(
+      /\s+/g,
+      ' '
+    );
+
+    return text.trim();
+  }
 
   // ==========================================
   // TEXT-TO-SPEECH
   // ==========================================
 
-  let voices = [];
-  let currentSpeech = null;
+  const synth = window.speechSynthesis;
+  let availableVoices = [];
+  let speechQueue = [];
   let speaking = false;
 
-  const speechQueue = [];
+  function getVoices() {
+    if (!synth) return [];
+
+    availableVoices = synth.getVoices() || [];
+
+    return availableVoices;
+  }
 
   function populateVoices() {
-    if (!('speechSynthesis' in window)) return;
-
     const select = $('voiceSelect');
     if (!select) return;
 
-    voices = speechSynthesis.getVoices();
-    select.replaceChildren();
+    const previous = settings.voice || select.value;
+
+    select.innerHTML = '';
+
+    const voices = getVoices();
 
     if (!voices.length) {
-      select.add(
-        new Option('Stimmen werden geladen ...', '')
-      );
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'Browser-Standardstimme';
+      select.appendChild(option);
       return;
     }
 
-    voices.forEach((voice, index) => {
-      select.add(
-        new Option(
-          `${voice.name} (${voice.lang})`,
-          String(index)
-        )
-      );
-    });
-
-    let index = voices.findIndex(
-      voice => voice.name === settings.voiceName
+    const german = voices.filter(voice =>
+      voice.lang?.toLowerCase().startsWith('de')
     );
 
-    if (index < 0) {
-      index = voices.findIndex(
-        voice => voice.lang.toLowerCase().startsWith('de')
-      );
+    const other = voices.filter(voice =>
+      !voice.lang?.toLowerCase().startsWith('de')
+    );
+
+    const sorted = [...german, ...other];
+
+    sorted.forEach(voice => {
+      const option = document.createElement('option');
+
+      option.value = voice.voiceURI || voice.name;
+      option.textContent =
+        `${voice.name} (${voice.lang})`;
+
+      select.appendChild(option);
+    });
+
+    const exists = sorted.some(voice =>
+      (voice.voiceURI || voice.name) === previous
+    );
+
+    if (exists) {
+      select.value = previous;
+    } else {
+      const preferred =
+        german.find(voice =>
+          /male|männ|stefan|markus|conrad|daniel/i.test(
+            voice.name
+          )
+        ) ||
+        german[0] ||
+        sorted[0];
+
+      if (preferred) {
+        select.value =
+          preferred.voiceURI || preferred.name;
+      }
     }
 
-    select.value = String(Math.max(0, index));
+    settings.voice = select.value;
+    saveSettings();
   }
 
-  if ('speechSynthesis' in window) {
-    populateVoices();
-
-    if (typeof speechSynthesis.addEventListener === 'function') {
-      speechSynthesis.addEventListener(
-        'voiceschanged',
-        populateVoices
-      );
-    }
+  function selectedVoice() {
+    return availableVoices.find(voice =>
+      (voice.voiceURI || voice.name) === settings.voice
+    ) || null;
   }
 
-  $('voiceSelect')?.addEventListener('change', event => {
-    const voice = voices[Number(event.target.value)];
+  function stopSpeaking() {
+    speechQueue = [];
+    speaking = false;
 
-    if (voice) {
-      settings.voiceName = voice.name;
-      persist();
+    if (synth) {
+      synth.cancel();
     }
-  });
-
-  // ==========================================
-  // EMOJI-FILTER
-  // ==========================================
-
-  function cleanTTSMessage(message) {
-    return String(message ?? '')
-      .replace(/[0-9#*]\uFE0F?\u20E3/gu, ' ')
-      .replace(/[\u{1F1E6}-\u{1F1FF}]/gu, ' ')
-      .replace(/\p{Extended_Pictographic}/gu, ' ')
-      .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, ' ')
-      .replace(/[\u200D\uFE0E\uFE0F\u20E3]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
   }
 
   function processSpeechQueue() {
-    if (speaking || !speechQueue.length) return;
-    if (!('speechSynthesis' in window)) return;
-
-    const text = speechQueue.shift();
-    const utterance = new SpeechSynthesisUtterance(text);
-
-    const selectedVoice =
-      voices[Number($('voiceSelect')?.value)];
-
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
+    if (!synth || speaking || !speechQueue.length) {
+      return;
     }
 
-    utterance.lang = selectedVoice?.lang || 'de-DE';
-    utterance.volume = Number(settings.volume) / 100;
-    utterance.rate = Number(settings.rate) / 100;
+    const item = speechQueue.shift();
+    if (!item) return;
 
     speaking = true;
-    currentSpeech = utterance;
 
-    function finish() {
-      if (currentSpeech !== utterance) return;
+    const utterance = new SpeechSynthesisUtterance(
+      item.text
+    );
 
-      currentSpeech = null;
+    const voice = selectedVoice();
+
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+    } else {
+      utterance.lang = 'de-DE';
+    }
+
+    utterance.volume = Math.min(
+      1,
+      Math.max(0, settings.volume / 100)
+    );
+
+    utterance.rate = Math.min(
+      2,
+      Math.max(0.5, settings.rate / 100)
+    );
+
+    utterance.pitch = 1;
+
+    utterance.onend = () => {
+      speaking = false;
+      processSpeechQueue();
+    };
+
+    utterance.onerror = () => {
+      speaking = false;
+      processSpeechQueue();
+    };
+
+    try {
+      synth.speak(utterance);
+    } catch (error) {
+      console.error('TTS-Fehler:', error);
       speaking = false;
       processSpeechQueue();
     }
-
-    utterance.onend = finish;
-    utterance.onerror = finish;
-
-    try {
-      speechSynthesis.speak(utterance);
-    } catch (error) {
-      console.warn('TTS-Fehler:', error);
-      finish();
-    }
   }
 
-  function speak(user, message, force = false) {
-    if (!('speechSynthesis' in window)) return;
-    if (!settings.ttsEnabled && !force) return;
-
-    const cleanMessage = cleanTTSMessage(message);
-    if (!cleanMessage) return;
-
-    const cleanUser = cleanTTSMessage(user);
-
-    const text =
-      settings.readNames && cleanUser
-        ? `${cleanUser} schreibt: ${cleanMessage}`
-        : cleanMessage;
-
-    if (speechQueue.length >= 30) {
-      speechQueue.shift();
+  function speak(message, username = '') {
+    if (!settings.ttsEnabled || !synth) {
+      return;
     }
 
-    speechQueue.push(text);
+    const cleanedMessage = cleanTTSMessage(message);
+    const cleanedUsername = cleanTTSMessage(username);
+
+    if (!cleanedMessage) {
+      return;
+    }
+
+    const text =
+      settings.readNames && cleanedUsername
+        ? `${cleanedUsername} schreibt: ${cleanedMessage}`
+        : cleanedMessage;
+
+    speechQueue.push({ text });
+
+    if (speechQueue.length > 30) {
+      speechQueue = speechQueue.slice(-30);
+    }
+
     processSpeechQueue();
   }
 
-  function stopSpeech() {
-    speechQueue.length = 0;
-    currentSpeech = null;
-    speaking = false;
-
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel();
-    }
-  }
-
-  $('testVoice')?.addEventListener('click', () => {
-    speak(
-      'JC Neon Studio',
-      'Deine Sprachausgabe funktioniert. Willkommen im Neon Studio!',
-      true
+  function updateTTSStatus() {
+    setText(
+      'ttsStatus',
+      settings.ttsEnabled ? 'AKTIV' : 'AUS'
     );
-  });
+  }
 
-  $('stopVoice')?.addEventListener('click', stopSpeech);
+  function setupTTSControls() {
+    const enabled = $('ttsEnabled');
 
-  // ==========================================
-  // OVERLAY-KOMMUNIKATION
-  // ==========================================
+    if (enabled) {
+      enabled.addEventListener('change', () => {
+        updateSetting('ttsEnabled', enabled.checked);
 
-  let overlayChannel = null;
+        if (!enabled.checked) {
+          stopSpeaking();
+        }
 
-  if ('BroadcastChannel' in window) {
-    try {
-      overlayChannel = new BroadcastChannel(
-        OVERLAY_CHANNEL
+        updateTTSStatus();
+      });
+    }
+
+    const voice = $('voiceSelect');
+
+    if (voice) {
+      voice.addEventListener('change', () => {
+        updateSetting('voice', voice.value);
+      });
+    }
+
+    const volume = $('volume');
+
+    if (volume) {
+      volume.addEventListener('input', () => {
+        updateSetting(
+          'volume',
+          Number(volume.value)
+        );
+
+        setText(
+          'volumeValue',
+          formatPercent(settings.volume)
+        );
+      });
+    }
+
+    const rate = $('rate');
+
+    if (rate) {
+      rate.addEventListener('input', () => {
+        updateSetting(
+          'rate',
+          Number(rate.value)
+        );
+
+        setText(
+          'rateValue',
+          `${(settings.rate / 100).toFixed(1)}×`
+        );
+      });
+    }
+
+    const readNames = $('readNames');
+
+    if (readNames) {
+      readNames.addEventListener('change', () => {
+        updateSetting(
+          'readNames',
+          readNames.checked
+        );
+      });
+    }
+
+    $('testVoice')?.addEventListener('click', () => {
+      speak(
+        'Hallo Faulie! Willkommen in deinem JC Neon Studio.'
       );
-    } catch (error) {
-      console.warn('Overlay-Kanal nicht verfügbar:', error);
-    }
-  }
+    });
 
-  function sendOverlay(data) {
-    try {
-      overlayChannel?.postMessage(data);
-    } catch (error) {
-      console.warn('Overlay-Nachricht fehlgeschlagen:', error);
-    }
+    $('stopVoice')?.addEventListener(
+      'click',
+      stopSpeaking
+    );
+
+    $('testMessageBtn')?.addEventListener(
+      'click',
+      () => {
+        const username =
+          $('testUser')?.value.trim() || 'FaulieFan';
+
+        const message =
+          $('testMessage')?.value.trim() || '';
+
+        if (!message) {
+          toast('Bitte gib eine Nachricht ein.');
+          return;
+        }
+
+        updateSetting('testUser', username);
+        updateSetting('testMessage', message);
+
+        addChatMessage(username, message, true);
+      }
+    );
+
+    $('testUser')?.addEventListener('input', event => {
+      updateSetting(
+        'testUser',
+        event.target.value
+      );
+    });
+
+    $('testMessage')?.addEventListener(
+      'input',
+      event => {
+        updateSetting(
+          'testMessage',
+          event.target.value
+        );
+      }
+    );
   }
 
   // ==========================================
-  // CHAT
+  // CHAT / TESTNACHRICHTEN
   // ==========================================
 
-  function addChat(user, message) {
-    const username = String(user || 'Gast').slice(0, 50);
-    const text = String(message || '').slice(0, 500);
+  const chatHistory = [];
+  const MAX_CHAT_HISTORY = 100;
 
-    if (!text.trim()) return;
+  function addChatMessage(
+    username,
+    message,
+    shouldSpeak = true,
+    metadata = {}
+  ) {
+    const name = String(username || 'Unbekannt');
+    const content = String(message || '');
+
+    if (!content.trim()) return;
+
+    const entry = {
+      id: crypto.randomUUID?.() ||
+        `${Date.now()}-${Math.random()}`,
+      username: name,
+      message: content,
+      timestamp: Date.now(),
+      ...metadata
+    };
+
+    chatHistory.push(entry);
+
+    if (chatHistory.length > MAX_CHAT_HISTORY) {
+      chatHistory.shift();
+    }
 
     const feed = $('chatFeed');
 
@@ -542,277 +733,765 @@
       const line = document.createElement('div');
       line.className = 'chat-line';
 
-      const name = document.createElement('span');
-      name.className = 'username';
-      name.textContent = username;
+      const user = document.createElement('span');
+      user.className = 'username';
+      user.textContent = name;
 
-      const content = document.createElement('span');
-      content.textContent = text;
+      const text = document.createElement('span');
+      text.textContent = content;
 
-      line.append(name, content);
-      feed.append(line);
+      line.appendChild(user);
+      line.appendChild(text);
+      feed.appendChild(line);
+
+      while (feed.children.length > 100) {
+        feed.firstElementChild?.remove();
+      }
 
       feed.scrollTop = feed.scrollHeight;
-
-      while (feed.children.length > 45) {
-        feed.firstElementChild.remove();
-      }
     }
 
-    sendOverlay({
+    if (shouldSpeak) {
+      speak(content, name);
+    }
+
+    sendOverlayEvent({
       type: 'chat',
-      user: username,
-      message: text
+      data: entry
     });
 
-    window.JCOverlay?.sendChat?.(username, text);
-
-    speak(username, text);
+    refreshOverlayPreview();
   }
 
-  $('sendChat')?.addEventListener('click', () => {
+  function setupChatControls() {
     const input = $('chatInput');
-    const message = input?.value.trim();
 
-    if (!message) return;
+    const send = () => {
+      const message = input?.value.trim();
 
-    addChat(
-      settings.testUser || 'FaulieFan',
-      message
-    );
+      if (!message) return;
 
-    input.value = '';
-    settings.chatInput = '';
-    persist();
-  });
-
-  $('chatInput')?.addEventListener('keydown', event => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      $('sendChat')?.click();
-    }
-  });
-
-  $('testMessageBtn')?.addEventListener('click', () => {
-    const user =
-      $('testUser')?.value.trim() || 'TestUser';
-
-    const message =
-      $('testMessage')?.value.trim() || '';
-
-    if (!message) {
-      toast('Bitte eine Nachricht eingeben.');
-      return;
-    }
-
-    addChat(user, message);
-    toast('Testnachricht gesendet.');
-  });
-
-  // ==========================================
-  // UNSICHTBARE M4A-SOUNDS
-  // ==========================================
-
-  const audioQueue = [];
-  let audioPlaying = false;
-  let activeAudio = null;
-  let audioUnlocked = false;
-
-  function unlockAudio() {
-    audioUnlocked = true;
-    processAudioQueue();
-  }
-
-  document.addEventListener('pointerdown', unlockAudio);
-  document.addEventListener('keydown', unlockAudio);
-
-  function processAudioQueue() {
-    if (audioPlaying || !audioQueue.length) return;
-    if (!audioUnlocked) return;
-
-    const type = audioQueue.shift();
-    const source = soundFiles[type];
-
-    if (!source) {
-      processAudioQueue();
-      return;
-    }
-
-    const audio = new Audio(source);
-
-    audio.preload = 'auto';
-    audio.volume = 1;
-
-    audioPlaying = true;
-    activeAudio = audio;
-
-    let finished = false;
-    let watchdog = null;
-
-    function finish() {
-      if (finished) return;
-      finished = true;
-
-      clearTimeout(watchdog);
-
-      audio.pause();
-      audio.removeAttribute('src');
-
-      activeAudio = null;
-      audioPlaying = false;
-
-      processAudioQueue();
-    }
-
-    audio.addEventListener(
-      'ended',
-      finish,
-      { once: true }
-    );
-
-    audio.addEventListener(
-      'error',
-      () => {
-        console.warn(
-          'Sound konnte nicht geladen werden:',
-          source
-        );
-
-        toast('Sounddatei konnte nicht geladen werden.');
-        finish();
-      },
-      { once: true }
-    );
-
-    watchdog = setTimeout(() => {
-      console.warn('Audio-Zeitüberschreitung:', source);
-      finish();
-    }, 60000);
-
-    audio.play().catch(error => {
-      console.warn('Audio blockiert:', error);
-
-      toast(
-        'Audiowiedergabe blockiert. Bitte das Dashboard anklicken.'
+      addChatMessage(
+        'FaulieFan',
+        message,
+        true
       );
 
-      finish();
+      if (input) {
+        input.value = '';
+      }
+
+      updateSetting('chatInput', '');
+    };
+
+    $('sendChat')?.addEventListener('click', send);
+
+    input?.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        send();
+      }
+    });
+
+    input?.addEventListener('input', event => {
+      updateSetting(
+        'chatInput',
+        event.target.value
+      );
     });
   }
 
-  function playAlertSound(type) {
-    if (!soundFiles[type]) return false;
+  // ==========================================
+  // ALERT-SOUNDS
+  // ==========================================
 
-    if (audioQueue.length >= 50) {
-      toast('Zu viele Sounds in der Warteschlange.');
-      return false;
+  const activeSounds = new Set();
+
+  function playAlertSound(type) {
+    if (!settings.soundEnabled) {
+      return;
     }
 
-    audioQueue.push(type);
-    processAudioQueue();
+    const file = SOUND_FILES[type];
 
-    return true;
+    if (!file) return;
+
+    const audio = new Audio(file);
+
+    audio.volume = Math.min(
+      1,
+      Math.max(0, settings.soundVolume / 100)
+    );
+
+    activeSounds.add(audio);
+
+    const cleanup = () => {
+      activeSounds.delete(audio);
+    };
+
+    audio.addEventListener('ended', cleanup, {
+      once: true
+    });
+
+    audio.addEventListener('error', cleanup, {
+      once: true
+    });
+
+    audio.play().catch(error => {
+      cleanup();
+
+      console.warn(
+        'Alert-Sound konnte nicht abgespielt werden:',
+        error
+      );
+    });
+  }
+
+  function stopAllSounds() {
+    activeSounds.forEach(audio => {
+      audio.pause();
+      audio.currentTime = 0;
+    });
+
+    activeSounds.clear();
+  }
+
+  function updateSoundStatus() {
+    const enabled = [
+      settings.followEnabled,
+      settings.subEnabled,
+      settings.bitsEnabled
+    ].filter(Boolean).length;
+
+    setText('soundCount', String(enabled));
   }
 
   // ==========================================
   // ALERTS
   // ==========================================
 
-  let alertPreviewTimer;
+  let alertPreviewTimer = null;
 
-  function triggerAlert(type, user, amount = 100) {
-    if (!alertInfo[type]) return false;
-
-    if (!settings[type + 'Enabled']) {
-      toast('Dieser Alert ist deaktiviert.');
-      return false;
+  function isAlertEnabled(type) {
+    if (type === 'follow') {
+      return settings.followEnabled;
     }
 
-    const info = alertInfo[type];
-
-    const username = String(
-      user || settings.alertUser || 'NeonSloth'
-    ).slice(0, 50);
-
-    playAlertSound(type);
-
-    const preview = $('alertPreview');
-
-    if (preview) {
-      preview.replaceChildren();
-
-      const symbol = document.createElement('div');
-      symbol.className = 'placeholder-icon';
-      symbol.textContent = info.symbol;
-
-      const title = document.createElement('b');
-      title.textContent = info.title;
-
-      const name = document.createElement('strong');
-      name.textContent = username;
-      name.style.cssText =
-        'font-size:26px;color:#e7b0ff;text-shadow:0 0 22px var(--accent)';
-
-      const detail = document.createElement('small');
-
-      detail.textContent =
-        type === 'bits'
-          ? `hat ${Math.max(1, Number(amount) || 1)} Bits gespendet!`
-          : info.description;
-
-      preview.append(
-        symbol,
-        title,
-        name,
-        detail
-      );
-
-      preview.classList.remove('alert-animation');
-      void preview.offsetWidth;
-      preview.classList.add('alert-animation');
-
-      clearTimeout(alertPreviewTimer);
-
-      alertPreviewTimer = setTimeout(() => {
-        preview.replaceChildren();
-
-        const placeholder = document.createElement('small');
-        placeholder.textContent =
-          'Bereit für den nächsten Alert.';
-
-        preview.append(placeholder);
-      }, Number(settings.duration) * 1000);
+    if (type === 'sub') {
+      return settings.subEnabled;
     }
 
-    toast(info.title + ': Sound ausgelöst.');
-    return true;
+    if (type === 'bits') {
+      return settings.bitsEnabled;
+    }
+
+    return false;
   }
 
-  document.querySelectorAll('[data-test]').forEach(button => {
-    button.addEventListener('click', () => {
-      unlockAudio();
+  function showAlertPreview(type, username) {
+    const preview = $('alertPreview');
 
-      triggerAlert(
-        button.dataset.test,
-        settings.alertUser
+    if (!preview) return;
+
+    clearTimeout(alertPreviewTimer);
+
+    const label = ALERT_LABELS[type] || 'NEUER ALERT';
+    const icon = ALERT_ICONS[type] || '✦';
+
+    preview.innerHTML = '';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = `neon-alert alert-${type}`;
+
+    const iconElement = document.createElement('div');
+    iconElement.className = 'neon-alert-icon';
+    iconElement.textContent = icon;
+
+    const title = document.createElement('div');
+    title.className = 'neon-alert-title';
+    title.textContent = label;
+
+    const user = document.createElement('strong');
+    user.className = 'neon-alert-user';
+    user.textContent = username;
+
+    wrapper.appendChild(iconElement);
+    wrapper.appendChild(title);
+    wrapper.appendChild(user);
+
+    preview.appendChild(wrapper);
+
+    alertPreviewTimer = setTimeout(() => {
+      preview.innerHTML = `
+        <div class="placeholder-icon">✦</div>
+        <b>DEIN NEON ALERT</b>
+        <small>Wähle links einen Test aus.</small>
+      `;
+    }, settings.duration * 1000);
+  }
+
+  function triggerAlert(
+    type,
+    username = 'NeonSloth',
+    metadata = {}
+  ) {
+    if (!isAlertEnabled(type)) {
+      toast('Dieser Alert ist deaktiviert.');
+      return;
+    }
+
+    const event = {
+      id: crypto.randomUUID?.() ||
+        `${Date.now()}-${Math.random()}`,
+      type,
+      username: String(username),
+      duration: settings.duration,
+      timestamp: Date.now(),
+      ...metadata
+    };
+
+    showAlertPreview(type, event.username);
+
+    if (settings.overlayAlertSound) {
+      playAlertSound(type);
+    }
+
+    sendOverlayEvent({
+      type: 'alert',
+      data: event
+    });
+
+    refreshOverlayPreview();
+  }
+
+  function setupAlertControls() {
+    const toggles = {
+      followEnabled: 'followEnabled',
+      subEnabled: 'subEnabled',
+      bitsEnabled: 'bitsEnabled'
+    };
+
+    Object.entries(toggles).forEach(
+      ([id, key]) => {
+        const element = $(id);
+
+        element?.addEventListener(
+          'change',
+          () => {
+            updateSetting(key, element.checked);
+            updateSoundStatus();
+          }
+        );
+      }
+    );
+
+    const duration = $('duration');
+
+    duration?.addEventListener('input', () => {
+      updateSetting(
+        'duration',
+        Number(duration.value)
+      );
+
+      setText(
+        'durationValue',
+        `${settings.duration} Sekunden`
       );
     });
-  });
+
+    $('alertUser')?.addEventListener(
+      'input',
+      event => {
+        updateSetting(
+          'alertUser',
+          event.target.value
+        );
+      }
+    );
+
+    document.querySelectorAll('[data-test]').forEach(
+      button => {
+        button.addEventListener('click', () => {
+          const type = button.dataset.test;
+
+          const username =
+            $('alertUser')?.value.trim() ||
+            settings.alertUser ||
+            'NeonSloth';
+
+          triggerAlert(type, username);
+        });
+      }
+    );
+  }
 
   // ==========================================
-  // TWITCH OAUTH MIT PKCE
+  // OVERLAY-KOMMUNIKATION
   // ==========================================
 
-  let twitchAuth = null;
+  const OVERLAY_CHANNEL = 'jc_neon_studio_overlay';
+  let overlayChannel = null;
+
+  try {
+    overlayChannel = new BroadcastChannel(
+      OVERLAY_CHANNEL
+    );
+  } catch (error) {
+    console.warn(
+      'BroadcastChannel ist nicht verfügbar:',
+      error
+    );
+  }
+
+  function sendOverlayEvent(payload) {
+    if (!payload || !overlayChannel) return;
+
+    try {
+      overlayChannel.postMessage({
+        source: 'jc-neon-studio',
+        timestamp: Date.now(),
+        ...payload
+      });
+    } catch (error) {
+      console.warn(
+        'Overlay-Nachricht konnte nicht gesendet werden:',
+        error
+      );
+    }
+  }
+
+  function syncOverlaySettings() {
+    sendOverlayEvent({
+      type: 'settings',
+      data: {
+        ...settings
+      }
+    });
+  }
+
+  function getOverlayURL() {
+    return new URL(
+      'overlay.html',
+      window.location.href
+    ).href;
+  }
+
+  function openOverlayWindow() {
+    const url = getOverlayURL();
+
+    const popup = window.open(
+      url,
+      'JCNeonStudioOverlay',
+      'width=1280,height=720,resizable=yes,scrollbars=no'
+    );
+
+    if (!popup) {
+      toast(
+        'Popup blockiert. Bitte Popups für JC Neon Studio erlauben.'
+      );
+      return;
+    }
+
+    popup.focus();
+
+    setTimeout(syncOverlaySettings, 700);
+  }
+
+  function copyOverlayURL() {
+    const url = getOverlayURL();
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url)
+        .then(() => {
+          toast('OBS-Overlay-Link kopiert.');
+        })
+        .catch(() => {
+          prompt('OBS-Overlay-Link:', url);
+        });
+
+      return;
+    }
+
+    prompt('OBS-Overlay-Link:', url);
+  }
+
+  function refreshOverlayPreview() {
+    const preview = $('overlayPreview');
+
+    if (!preview) return;
+
+    preview.dataset.chat =
+      settings.showChatOverlay ? 'on' : 'off';
+
+    preview.dataset.alerts =
+      settings.showAlertOverlay ? 'on' : 'off';
+
+    preview.dataset.theme =
+      settings.overlayTheme || 'neon';
+  }
+
+  // ==========================================
+  // OVERLAY-EINSTELLUNGEN
+  // ==========================================
+
+  function bindOverlayCheckbox(id, key) {
+    const element = $(id);
+
+    if (!element) return;
+
+    element.addEventListener('change', () => {
+      updateSetting(key, element.checked);
+      refreshOverlayPreview();
+      syncOverlaySettings();
+    });
+  }
+
+  function bindOverlayRange(id, key, outputId, suffix = '') {
+    const element = $(id);
+
+    if (!element) return;
+
+    element.addEventListener('input', () => {
+      updateSetting(key, Number(element.value));
+
+      if (outputId) {
+        setText(
+          outputId,
+          `${element.value}${suffix}`
+        );
+      }
+
+      refreshOverlayPreview();
+      syncOverlaySettings();
+    });
+  }
+
+  function bindOverlaySelect(id, key) {
+    const element = $(id);
+
+    if (!element) return;
+
+    element.addEventListener('change', () => {
+      updateSetting(key, element.value);
+      refreshOverlayPreview();
+      syncOverlaySettings();
+    });
+  }
+
+  function setupOverlayControls() {
+    $('openOverlay')?.addEventListener(
+      'click',
+      openOverlayWindow
+    );
+
+    $('openCombinedOverlay')?.addEventListener(
+      'click',
+      openOverlayWindow
+    );
+
+    $('openChatOverlay')?.addEventListener(
+      'click',
+      openOverlayWindow
+    );
+
+    $('openAlertOverlay')?.addEventListener(
+      'click',
+      openOverlayWindow
+    );
+
+    $('copyOverlayURL')?.addEventListener(
+      'click',
+      copyOverlayURL
+    );
+
+    $('copyOverlayLink')?.addEventListener(
+      'click',
+      copyOverlayURL
+    );
+
+    bindOverlayCheckbox(
+      'showChatOverlay',
+      'showChatOverlay'
+    );
+
+    bindOverlayCheckbox(
+      'showAlertOverlay',
+      'showAlertOverlay'
+    );
+
+    bindOverlayCheckbox(
+      'overlayShowAvatar',
+      'overlayShowAvatar'
+    );
+
+    bindOverlayCheckbox(
+      'overlayShowBadges',
+      'overlayShowBadges'
+    );
+
+    bindOverlayCheckbox(
+      'overlayChatBackground',
+      'overlayChatBackground'
+    );
+
+    bindOverlayCheckbox(
+      'overlayAlertBackground',
+      'overlayAlertBackground'
+    );
+
+    bindOverlayCheckbox(
+      'overlayChatSound',
+      'overlayChatSound'
+    );
+
+    bindOverlayCheckbox(
+      'overlayAlertSound',
+      'overlayAlertSound'
+    );
+
+    bindOverlaySelect(
+      'chatPosition',
+      'chatPosition'
+    );
+
+    bindOverlaySelect(
+      'alertPosition',
+      'alertPosition'
+    );
+
+    bindOverlaySelect(
+      'overlayChatAnimation',
+      'overlayChatAnimation'
+    );
+
+    bindOverlaySelect(
+      'overlayAlertAnimation',
+      'overlayAlertAnimation'
+    );
+
+    bindOverlaySelect(
+      'overlayTheme',
+      'overlayTheme'
+    );
+
+    bindOverlayRange(
+      'overlayScale',
+      'overlayScale',
+      'overlayScaleValue',
+      '%'
+    );
+
+    bindOverlayRange(
+      'overlayChatLimit',
+      'overlayChatLimit',
+      'overlayChatLimitValue'
+    );
+
+    bindOverlayRange(
+      'overlayChatDuration',
+      'overlayChatDuration',
+      'overlayChatDurationValue',
+      ' s'
+    );
+
+    bindOverlayRange(
+      'overlayChatWidth',
+      'overlayChatWidth',
+      'overlayChatWidthValue',
+      ' px'
+    );
+
+    bindOverlayRange(
+      'overlayAlertWidth',
+      'overlayAlertWidth',
+      'overlayAlertWidthValue',
+      ' px'
+    );
+
+    bindOverlayRange(
+      'overlayFontSize',
+      'overlayFontSize',
+      'overlayFontSizeValue',
+      ' px'
+    );
+
+    bindOverlayRange(
+      'overlayOpacity',
+      'overlayOpacity',
+      'overlayOpacityValue',
+      '%'
+    );
+
+    bindOverlayRange(
+      'soundVolume',
+      'soundVolume',
+      'soundVolumeValue',
+      '%'
+    );
+
+    bindOverlayCheckbox(
+      'soundEnabled',
+      'soundEnabled'
+    );
+
+    $('overlayTestChat')?.addEventListener(
+      'click',
+      () => {
+        addChatMessage(
+          settings.overlayTestUser,
+          settings.overlayTestMessage,
+          false
+        );
+      }
+    );
+
+    $('overlayTestFollow')?.addEventListener(
+      'click',
+      () => {
+        triggerAlert(
+          'follow',
+          settings.overlayTestUser
+        );
+      }
+    );
+
+    $('overlayTestSub')?.addEventListener(
+      'click',
+      () => {
+        triggerAlert(
+          'sub',
+          settings.overlayTestUser
+        );
+      }
+    );
+
+    $('overlayTestBits')?.addEventListener(
+      'click',
+      () => {
+        triggerAlert(
+          'bits',
+          settings.overlayTestUser
+        );
+      }
+    );
+
+    $('overlayTestUser')?.addEventListener(
+      'input',
+      event => {
+        updateSetting(
+          'overlayTestUser',
+          event.target.value
+        );
+      }
+    );
+
+    $('overlayTestMessage')?.addEventListener(
+      'input',
+      event => {
+        updateSetting(
+          'overlayTestMessage',
+          event.target.value
+        );
+      }
+    );
+  }
+
+  // ==========================================
+  // TEIL 2 FOLGT DIREKT HIERUNTEN
+  // ==========================================
+
+  // ==========================================
+  // JC NEON STUDIO 2.2 – TEIL 2 VON 2
+  // TWITCH / EVENTSUB / INITIALISIERUNG
+  // ==========================================
+
+  const TWITCH_API = 'https://api.twitch.tv/helix';
+  const TWITCH_EVENTSUB_URL =
+    'wss://eventsub.wss.twitch.tv/ws';
+
+  let twitchAuth = readStorage(AUTH_STORAGE_KEY);
   let twitchUser = null;
-  let connectionStatus = 'disconnected';
+  let twitchSocket = null;
+  let twitchSessionId = null;
+  let twitchReconnectTimer = null;
+  let twitchConnected = false;
+  let twitchConnecting = false;
+  let twitchGeneration = 0;
+
+  let twitchEventIds = new Set();
+  let twitchEventIdOrder = [];
+
+  const TWITCH_SUBSCRIPTIONS = [
+    {
+      type: 'channel.chat.message',
+      version: '1',
+      condition: user => ({
+        broadcaster_user_id: user.id,
+        user_id: user.id
+      })
+    },
+    {
+      type: 'channel.follow',
+      version: '2',
+      condition: user => ({
+        broadcaster_user_id: user.id,
+        moderator_user_id: user.id
+      })
+    },
+    {
+      type: 'channel.subscribe',
+      version: '1',
+      condition: user => ({
+        broadcaster_user_id: user.id
+      })
+    },
+    {
+      type: 'channel.subscription.gift',
+      version: '1',
+      condition: user => ({
+        broadcaster_user_id: user.id
+      })
+    },
+    {
+      type: 'channel.subscription.message',
+      version: '1',
+      condition: user => ({
+        broadcaster_user_id: user.id
+      })
+    },
+    {
+      type: 'channel.cheer',
+      version: '1',
+      condition: user => ({
+        broadcaster_user_id: user.id
+      })
+    }
+  ];
+
+  // ==========================================
+  // PKCE HILFSFUNKTIONEN
+  // ==========================================
+
+  function randomString(length = 64) {
+    const alphabet =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
+      'abcdefghijklmnopqrstuvwxyz' +
+      '0123456789-._~';
+
+    const bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
+
+    return Array.from(
+      bytes,
+      byte => alphabet[byte % alphabet.length]
+    ).join('');
+  }
 
   function base64url(bytes) {
-    let binary = '';
-
-    for (const byte of bytes) {
-      binary += String.fromCharCode(byte);
-    }
+    const binary = Array.from(
+      bytes,
+      byte => String.fromCharCode(byte)
+    ).join('');
 
     return btoa(binary)
       .replace(/\+/g, '-')
@@ -820,177 +1499,33 @@
       .replace(/=+$/g, '');
   }
 
-  function randomString(length = 32) {
-    const bytes = new Uint8Array(length);
-    crypto.getRandomValues(bytes);
-    return base64url(bytes);
-  }
-
   async function createCodeChallenge(verifier) {
-    const data = new TextEncoder().encode(verifier);
+    const bytes = new TextEncoder().encode(verifier);
+
     const hash = await crypto.subtle.digest(
       'SHA-256',
-      data
+      bytes
     );
 
     return base64url(new Uint8Array(hash));
   }
 
-  function saveAuth(auth) {
-    twitchAuth = auth;
-
-    if (auth) {
-      sessionStorage.setItem(
-        AUTH_STORAGE_KEY,
-        JSON.stringify(auth)
-      );
-    } else {
-      sessionStorage.removeItem(AUTH_STORAGE_KEY);
-    }
+  function getOAuthCallbackURL() {
+    return TWITCH_REDIRECT_URI;
   }
 
-  function setConnectionStatus(status) {
-    const states = {
-      disconnected: {
-        label: 'NICHT VERBUNDEN',
-        short: 'OFFLINE',
-        detail: 'Twitch noch nicht verbunden',
-        color: 'amber'
-      },
-      connecting: {
-        label: 'VERBINDE ...',
-        short: 'VERBINDET',
-        detail: 'Twitch-Anmeldung wird geprüft',
-        color: 'amber'
-      },
-      connected: {
-        label: 'VERBUNDEN',
-        short: 'ONLINE',
-        detail: twitchUser
-          ? `Angemeldet als ${twitchUser.display_name}`
-          : 'Twitch-Konto angemeldet',
-        color: 'green'
-      }
-    };
-
-    if (!states[status]) return;
-
-    connectionStatus = status;
-    const state = states[status];
-
-    const textValues = {
-      connectionStatus: state.label,
-      connectionStat: state.short,
-      connectionStatDetail: state.detail,
-      sideConnectionStatus: state.label,
-      sideConnectionDetail: state.detail,
-      settingsConnectionStatus: state.label,
-      settingsConnectionDetail: state.detail
-    };
-
-    Object.entries(textValues).forEach(([id, value]) => {
-      setText(id, value);
-    });
-
-    [
-      'connectionDot',
-      'sideConnectionDot',
-      'profileConnectionDot',
-      'settingsConnectionDot'
-    ].forEach(id => {
-      const dot = $(id);
-      if (!dot) return;
-
-      dot.classList.remove('amber', 'green');
-      dot.classList.add(state.color);
-    });
-
-    document.querySelectorAll('.pill').forEach(pill => {
-      if (!pill.querySelector('.dot')) return;
-
-      const dot = pill.querySelector('.dot');
-      dot.classList.remove('amber', 'green');
-      dot.classList.add(state.color);
-
-      const textNode = [...pill.childNodes].find(
-        node => node.nodeType === Node.TEXT_NODE
-      );
-
-      if (textNode) {
-        textNode.textContent = ' ' + state.short;
-      }
-    });
-
-    document.querySelectorAll('.side-info').forEach(info => {
-      const bold = info.querySelector('b');
-      const small = info.querySelector('small');
-      const dot = info.querySelector('.dot');
-
-      if (bold) bold.textContent = state.label;
-      if (small) small.textContent = state.detail;
-
-      if (dot) {
-        dot.classList.remove('amber', 'green');
-        dot.classList.add(state.color);
-      }
-    });
-
-    const stat = $('connectionStat');
-
-    if (!stat) {
-      document.querySelectorAll('.stat').forEach(card => {
-        const label = card.querySelector('span');
-
-        if (label?.textContent.trim() === 'VERBINDUNG') {
-          const strong = card.querySelector('strong');
-          const small = card.querySelector('small');
-
-          if (strong) strong.textContent = state.short;
-          if (small) small.textContent = state.detail;
-        }
-      });
-    }
-
-    const connectionPanels =
-      document.querySelectorAll('.connection');
-
-    connectionPanels.forEach(panel => {
-      const bold = panel.querySelector('b');
-      const small = panel.querySelector('small');
-      const dot = panel.querySelector('.dot');
-
-      if (bold) bold.textContent = state.label;
-      if (small) small.textContent = state.detail;
-
-      if (dot) {
-        dot.classList.remove('amber', 'green');
-        dot.classList.add(state.color);
-      }
-    });
-
-    const button = $('twitchBtn');
-
-    if (button) {
-      button.textContent =
-        status === 'connected'
-          ? 'Twitch trennen'
-          : status === 'connecting'
-            ? 'Verbinde ...'
-            : 'Twitch verbinden ↗';
-
-      button.disabled = status === 'connecting';
-    }
-  }
-
-  function clearOAuthURL() {
+  function removeOAuthParameters() {
     const url = new URL(window.location.href);
 
     [
       'code',
       'state',
+      'scope',
       'error',
       'error_description'
-    ].forEach(key => url.searchParams.delete(key));
+    ].forEach(parameter => {
+      url.searchParams.delete(parameter);
+    });
 
     history.replaceState(
       {},
@@ -999,16 +1534,19 @@
     );
   }
 
+  // ==========================================
+  // TWITCH ANMELDUNG
+  // ==========================================
+
   async function connectTwitch() {
-    if (!window.isSecureContext || !crypto?.subtle) {
-      toast('Twitch-Login benötigt eine sichere HTTPS-Webseite.');
-      return;
-    }
+    if (twitchConnecting) return;
+
+    twitchConnecting = true;
 
     try {
-      const verifier = randomString(64);
+      const verifier = randomString(96);
       const challenge = await createCodeChallenge(verifier);
-      const state = randomString(32);
+      const state = randomString(40);
 
       sessionStorage.setItem(
         PKCE_STORAGE_KEY,
@@ -1019,35 +1557,69 @@
         })
       );
 
-      const params = new URLSearchParams({
-        client_id: TWITCH_CLIENT_ID,
-        redirect_uri: TWITCH_REDIRECT_URI,
-        response_type: 'code',
-        scope: TWITCH_SCOPES.join(' '),
-        state,
-        code_challenge: challenge,
-        code_challenge_method: 'S256',
-        force_verify: 'true'
-      });
-
-      window.location.assign(
-        'https://id.twitch.tv/oauth2/authorize?' +
-        params.toString()
+      const url = new URL(
+        'https://id.twitch.tv/oauth2/authorize'
       );
+
+      url.searchParams.set(
+        'client_id',
+        TWITCH_CLIENT_ID
+      );
+
+      url.searchParams.set(
+        'redirect_uri',
+        getOAuthCallbackURL()
+      );
+
+      url.searchParams.set(
+        'response_type',
+        'code'
+      );
+
+      url.searchParams.set(
+        'scope',
+        TWITCH_SCOPES.join(' ')
+      );
+
+      url.searchParams.set(
+        'state',
+        state
+      );
+
+      url.searchParams.set(
+        'code_challenge',
+        challenge
+      );
+
+      url.searchParams.set(
+        'code_challenge_method',
+        'S256'
+      );
+
+      window.location.assign(url.toString());
+
     } catch (error) {
-      console.error('Twitch-Login konnte nicht starten:', error);
-      toast('Twitch-Anmeldung konnte nicht gestartet werden.');
+      twitchConnecting = false;
+
+      console.error(
+        'Twitch-Anmeldung fehlgeschlagen:',
+        error
+      );
+
+      toast(
+        'Twitch-Anmeldung konnte nicht gestartet werden.'
+      );
     }
   }
 
-  async function exchangeCode(code, verifier) {
-    const body = new URLSearchParams({
-      client_id: TWITCH_CLIENT_ID,
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: TWITCH_REDIRECT_URI,
-      code_verifier: verifier
-    });
+  async function exchangeOAuthCode(code, verifier) {
+    const body = new URLSearchParams();
+
+    body.set('client_id', TWITCH_CLIENT_ID);
+    body.set('grant_type', 'authorization_code');
+    body.set('code', code);
+    body.set('redirect_uri', getOAuthCallbackURL());
+    body.set('code_verifier', verifier);
 
     const response = await fetch(
       'https://id.twitch.tv/oauth2/token',
@@ -1061,97 +1633,23 @@
       }
     );
 
-    if (!response.ok) {
+    const result = await response.json();
+
+    if (!response.ok || !result.access_token) {
       throw new Error(
-        'Twitch konnte den Autorisierungscode nicht einlösen.'
+        result.message ||
+        'Twitch konnte den Zugangscode nicht bestätigen.'
       );
     }
 
-    return response.json();
-  }
-
-  async function validateToken(token) {
-    const response = await fetch(
-      'https://id.twitch.tv/oauth2/validate',
-      {
-        headers: {
-          Authorization: 'OAuth ' + token
-        }
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error('Twitch-Sitzung ist nicht mehr gültig.');
-    }
-
-    const data = await response.json();
-
-    if (data.client_id !== TWITCH_CLIENT_ID) {
-      throw new Error('Die Twitch-Client-ID stimmt nicht überein.');
-    }
-
-    return data;
-  }
-
-  async function loadTwitchUser(token) {
-    const response = await fetch(
-      'https://api.twitch.tv/helix/users',
-      {
-        headers: {
-          Authorization: 'Bearer ' + token,
-          'Client-Id': TWITCH_CLIENT_ID
-        }
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error('Twitch-Benutzerprofil konnte nicht geladen werden.');
-    }
-
-    const result = await response.json();
-    const user = result.data?.[0];
-
-    if (!user) {
-      throw new Error('Twitch-Benutzer nicht gefunden.');
-    }
-
-    return user;
-  }
-
-  async function activateTwitch(auth) {
-    setConnectionStatus('connecting');
-
-    const validation = await validateToken(
-      auth.access_token
-    );
-
-    const user = await loadTwitchUser(
-      auth.access_token
-    );
-
-    twitchUser = user;
-
-    saveAuth({
-      access_token: auth.access_token,
-      refresh_token: auth.refresh_token || null,
-      expires_at: auth.expires_at ||
-        Date.now() + Math.max(
-          0,
-          Number(validation.expires_in || 0)
-        ) * 1000,
-      user_id: user.id,
-      login: user.login,
-      display_name: user.display_name
-    });
-
-    setConnectionStatus('connected');
-
-    console.info(
-      'JC Neon Studio: Twitch angemeldet als',
-      user.display_name
-    );
-
-    toast('Twitch verbunden: ' + user.display_name);
+    return {
+      access_token: result.access_token,
+      refresh_token: result.refresh_token || '',
+      token_type: result.token_type || 'bearer',
+      scope: result.scope || [],
+      expires_at:
+        Date.now() + result.expires_in * 1000
+    };
   }
 
   async function handleOAuthCallback() {
@@ -1161,374 +1659,1468 @@
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
 
-    if (!error && !code) {
-      return false;
+    if (error) {
+      const description =
+        url.searchParams.get('error_description') ||
+        error;
+
+      removeOAuthParameters();
+
+      toast(
+        `Twitch-Anmeldung abgebrochen: ${description}`,
+        6000
+      );
+
+      return;
     }
 
-    const pending = readStorage(
+    if (!code) return;
+
+    const saved = readStorage(
       PKCE_STORAGE_KEY,
       sessionStorage
     );
 
-    clearOAuthURL();
+    removeOAuthParameters();
+
+    if (
+      !saved ||
+      !saved.verifier ||
+      !saved.state ||
+      saved.state !== state ||
+      Date.now() - saved.createdAt > 600000
+    ) {
+      toast(
+        'Die Twitch-Anmeldung ist abgelaufen. Bitte erneut verbinden.',
+        6000
+      );
+      return;
+    }
+
     sessionStorage.removeItem(PKCE_STORAGE_KEY);
 
-    if (error) {
-      toast('Twitch-Anmeldung abgebrochen oder abgelehnt.');
-      console.warn(
-        'Twitch OAuth:',
-        error,
-        url.searchParams.get('error_description')
+    try {
+      twitchAuth = await exchangeOAuthCode(
+        code,
+        saved.verifier
       );
-      return true;
+
+      writeStorage(
+        AUTH_STORAGE_KEY,
+        twitchAuth
+      );
+
+      toast(
+        'Twitch-Anmeldung erfolgreich!'
+      );
+
+    } catch (error) {
+      console.error(error);
+
+      toast(
+        `Twitch-Anmeldung fehlgeschlagen: ${error.message}`,
+        6000
+      );
+    }
+  }
+
+  // ==========================================
+  // TOKEN ERNEUERN / VALIDIEREN
+  // ==========================================
+
+  async function refreshTwitchToken() {
+    if (
+      !twitchAuth ||
+      !twitchAuth.refresh_token
+    ) {
+      throw new Error(
+        'Kein Refresh-Token vorhanden.'
+      );
+    }
+
+    const body = new URLSearchParams();
+
+    body.set('grant_type', 'refresh_token');
+    body.set(
+      'refresh_token',
+      twitchAuth.refresh_token
+    );
+    body.set('client_id', TWITCH_CLIENT_ID);
+
+    const response = await fetch(
+      'https://id.twitch.tv/oauth2/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/x-www-form-urlencoded'
+        },
+        body
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.access_token) {
+      throw new Error(
+        result.message ||
+        'Twitch-Token konnte nicht erneuert werden.'
+      );
+    }
+
+    twitchAuth = {
+      access_token: result.access_token,
+      refresh_token:
+        result.refresh_token ||
+        twitchAuth.refresh_token,
+      token_type: result.token_type || 'bearer',
+      scope: result.scope || twitchAuth.scope || [],
+      expires_at:
+        Date.now() + result.expires_in * 1000
+    };
+
+    writeStorage(
+      AUTH_STORAGE_KEY,
+      twitchAuth
+    );
+
+    return twitchAuth.access_token;
+  }
+
+  async function validateTwitchToken() {
+    if (!twitchAuth?.access_token) {
+      return null;
+    }
+
+    const response = await fetch(
+      'https://id.twitch.tv/oauth2/validate',
+      {
+        headers: {
+          Authorization:
+            `OAuth ${twitchAuth.access_token}`
+        }
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const result = await response.json();
+
+    if (
+      result.client_id !== TWITCH_CLIENT_ID
+    ) {
+      return null;
+    }
+
+    return result;
+  }
+
+  async function ensureTwitchToken() {
+    if (!twitchAuth?.access_token) {
+      throw new Error(
+        'Twitch ist nicht angemeldet.'
+      );
     }
 
     if (
-      !pending ||
-      !pending.verifier ||
-      !pending.state ||
-      pending.state !== state ||
-      !pending.createdAt ||
-      Date.now() - pending.createdAt > 600000
+      twitchAuth.expires_at &&
+      Date.now() >
+        twitchAuth.expires_at - 120000
     ) {
-      toast('Twitch-Anmeldung ungültig. Bitte erneut verbinden.');
-      return true;
+      await refreshTwitchToken();
     }
 
-    try {
-      setConnectionStatus('connecting');
+    let validation = await validateTwitchToken();
 
-      const tokens = await exchangeCode(
-        code,
-        pending.verifier
+    if (!validation) {
+      await refreshTwitchToken();
+      validation = await validateTwitchToken();
+    }
+
+    if (!validation) {
+      throw new Error(
+        'Die Twitch-Anmeldung ist nicht mehr gültig.'
+      );
+    }
+
+    return twitchAuth.access_token;
+  }
+
+  // ==========================================
+  // TWITCH API
+  // ==========================================
+
+  async function twitchAPI(
+    path,
+    options = {},
+    retry = true
+  ) {
+    const token = await ensureTwitchToken();
+
+    const headers = new Headers(
+      options.headers || {}
+    );
+
+    headers.set(
+      'Authorization',
+      `Bearer ${token}`
+    );
+
+    headers.set(
+      'Client-Id',
+      TWITCH_CLIENT_ID
+    );
+
+    const response = await fetch(
+      `${TWITCH_API}${path}`,
+      {
+        ...options,
+        headers
+      }
+    );
+
+    if (response.status === 401 && retry) {
+      await refreshTwitchToken();
+
+      return twitchAPI(
+        path,
+        options,
+        false
+      );
+    }
+
+    const result = await response.json()
+      .catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        result.message ||
+        `Twitch API Fehler: ${response.status}`
+      );
+    }
+
+    return result;
+  }
+
+  async function getTwitchUser() {
+    const result = await twitchAPI('/users');
+
+    const user = result.data?.[0];
+
+    if (!user) {
+      throw new Error(
+        'Twitch-Benutzer konnte nicht geladen werden.'
+      );
+    }
+
+    return user;
+  }
+
+  // ==========================================
+  // VERBINDUNGSSTATUS
+  // ==========================================
+
+  function setTwitchStatus(
+    connected,
+    username = ''
+  ) {
+    twitchConnected = connected;
+
+    const status =
+      connected ? 'ONLINE' : 'OFFLINE';
+
+    setText('twitchStatus', status);
+    setText('connectionStatus', status);
+
+    const badge =
+      $('connectionBadge') ||
+      $('twitchBadge');
+
+    if (badge) {
+      badge.classList.toggle(
+        'connected',
+        connected
       );
 
-      await activateTwitch({
-        ...tokens,
-        expires_at:
-          Date.now() +
-          Number(tokens.expires_in || 0) * 1000
-      });
-    } catch (error) {
-      console.error('Twitch OAuth Fehler:', error);
+      badge.classList.toggle(
+        'online',
+        connected
+      );
 
-      saveAuth(null);
-      twitchUser = null;
-      setConnectionStatus('disconnected');
+      badge.classList.toggle(
+        'offline',
+        !connected
+      );
 
-      toast('Twitch-Anmeldung fehlgeschlagen.');
+      badge.textContent = connected
+        ? 'ONLINE 🟢 VERBUNDEN'
+        : 'OFFLINE 🟠 NICHT VERBUNDEN';
+    }
+
+    const button =
+      $('twitchConnect') ||
+      $('connectTwitch') ||
+      $('twitchButton');
+
+    if (button) {
+      button.textContent = connected
+        ? 'Twitch trennen'
+        : 'Twitch verbinden ↗';
+    }
+
+    if (connected && username) {
+      setText(
+        'twitchUsername',
+        username
+      );
+
+      setText(
+        'connectedUser',
+        username
+      );
+
+      setText(
+        'twitchInfo',
+        `Angemeldet als ${username}`
+      );
+    } else if (!connected) {
+      setText(
+        'twitchInfo',
+        'Nicht verbunden'
+      );
+    }
+  }
+
+  // ==========================================
+  // EVENTSUB WEBSOCKET
+  // ==========================================
+
+  function rememberEventId(id) {
+    if (!id) return true;
+
+    if (twitchEventIds.has(id)) {
+      return false;
+    }
+
+    twitchEventIds.add(id);
+    twitchEventIdOrder.push(id);
+
+    if (twitchEventIdOrder.length > 500) {
+      const oldId = twitchEventIdOrder.shift();
+      twitchEventIds.delete(oldId);
     }
 
     return true;
   }
 
-  async function restoreTwitchSession() {
-    const stored = readStorage(
-      AUTH_STORAGE_KEY,
-      sessionStorage
-    );
+  function closeTwitchSocket() {
+    clearTimeout(twitchReconnectTimer);
 
-    if (!stored?.access_token) {
-      setConnectionStatus('disconnected');
-      return;
-    }
+    twitchGeneration++;
 
-    if (
-      stored.expires_at &&
-      Date.now() >= stored.expires_at
-    ) {
-      saveAuth(null);
-      setConnectionStatus('disconnected');
-      return;
-    }
+    const socket = twitchSocket;
 
-    try {
-      await activateTwitch(stored);
-    } catch (error) {
-      console.warn('Twitch-Sitzung abgelaufen:', error);
+    twitchSocket = null;
+    twitchSessionId = null;
 
-      saveAuth(null);
-      twitchUser = null;
-      setConnectionStatus('disconnected');
-    }
-  }
+    if (socket) {
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onerror = null;
+      socket.onclose = null;
 
-  function disconnectTwitch() {
-    // Lokale Sitzung beenden.
-    // Die Twitch-Autorisierung kann zusätzlich in den
-    // Twitch-Kontoeinstellungen widerrufen werden.
-
-    saveAuth(null);
-    twitchUser = null;
-    setConnectionStatus('disconnected');
-
-    toast('Twitch-Verbindung lokal getrennt.');
-  }
-
-  async function initializeTwitch() {
-    try {
-      const handled = await handleOAuthCallback();
-
-      if (!handled) {
-        await restoreTwitchSession();
+      try {
+        socket.close(1000, 'Studio geschlossen');
+      } catch (error) {
+        console.warn(error);
       }
-    } catch (error) {
-      console.error('Twitch-Initialisierung:', error);
-
-      setConnectionStatus('disconnected');
-      toast('Twitch-Verbindung konnte nicht geprüft werden.');
     }
   }
 
-  $('twitchBtn')?.addEventListener('click', () => {
-    if (connectionStatus === 'connected') {
-      disconnectTwitch();
-    } else {
-      connectTwitch();
-    }
-  });
-
-  $('twitchInfo')?.addEventListener('click', () => {
-    if (connectionStatus === 'connected') {
-      toast(
-        'Twitch ist angemeldet. Live-Chat und EventSub folgen.'
-      );
-    } else {
-      connectTwitch();
-    }
-  });
-
-  setConnectionStatus('disconnected');
-  initializeTwitch();
-
-  // ==========================================
-  // EINSTELLUNGEN EXPORTIEREN
-  // ==========================================
-
-  $('exportSettings')?.addEventListener('click', () => {
-    const backup = {
-      application: 'JC Neon Studio',
-      version: '2.1.0',
-      exportedAt: new Date().toISOString(),
-      settings: { ...settings },
-      overlaySettings:
-        window.JCOverlay?.getSettings?.() || null
+  async function createEventSubSubscription(
+    subscription,
+    sessionId
+  ) {
+    const payload = {
+      type: subscription.type,
+      version: subscription.version,
+      condition:
+        subscription.condition(twitchUser),
+      transport: {
+        method: 'websocket',
+        session_id: sessionId
+      }
     };
 
-    // Twitch-Tokens werden NICHT exportiert.
+    const result = await twitchAPI(
+      '/eventsub/subscriptions',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/json'
+        },
+        body: JSON.stringify(payload)
+      }
+    );
 
-    const json = JSON.stringify(backup, null, 2);
+    console.log(
+      'EventSub registriert:',
+      subscription.type,
+      result
+    );
+  }
+
+  async function registerEventSubSubscriptions(
+    sessionId
+  ) {
+    for (const subscription of TWITCH_SUBSCRIPTIONS) {
+      try {
+        await createEventSubSubscription(
+          subscription,
+          sessionId
+        );
+      } catch (error) {
+        console.warn(
+          `EventSub ${subscription.type} fehlgeschlagen:`,
+          error.message
+        );
+      }
+    }
+  }
+
+  function handleTwitchNotification(
+    type,
+    event
+  ) {
+    if (!event) return;
+
+    switch (type) {
+      case 'channel.chat.message': {
+        const username =
+          event.chatter_user_name ||
+          event.chatter_user_login ||
+          'Unbekannt';
+
+        const message =
+          event.message?.text || '';
+
+        if (!message) return;
+
+        addChatMessage(
+          username,
+          message,
+          true,
+          {
+            twitch: true,
+            messageId: event.message_id
+          }
+        );
+
+        break;
+      }
+
+      case 'channel.follow': {
+        triggerAlert(
+          'follow',
+          event.user_name ||
+          event.user_login ||
+          'Neuer Follower'
+        );
+
+        break;
+      }
+
+      case 'channel.subscribe': {
+        triggerAlert(
+          'sub',
+          event.user_name ||
+          event.user_login ||
+          'Neuer Abonnent',
+          {
+            tier: event.tier,
+            isGift: event.is_gift
+          }
+        );
+
+        break;
+      }
+
+      case 'channel.subscription.gift': {
+        // Geschenk-Abos können zusätzliche
+        // channel.subscribe-Events erzeugen.
+        // Daher hier keine zweite Tonwiedergabe.
+        console.log(
+          'Geschenk-Abos:',
+          event.total,
+          event.user_name
+        );
+
+        break;
+      }
+
+      case 'channel.subscription.message': {
+        // Verlängerungsnachricht im Log.
+        // Kein zweiter Alert, damit keine
+        // doppelten Abo-Sounds entstehen.
+        console.log(
+          'Abo-Nachricht:',
+          event.user_name,
+          event.cumulative_months
+        );
+
+        break;
+      }
+
+      case 'channel.cheer': {
+        const bits = Number(
+          event.bits || 0
+        );
+
+        if (bits <= 0) return;
+
+        triggerAlert(
+          'bits',
+          event.is_anonymous
+            ? 'Anonym'
+            : (
+                event.user_name ||
+                event.user_login ||
+                'Zuschauer'
+              ),
+          {
+            bits
+          }
+        );
+
+        break;
+      }
+
+      default:
+        console.log(
+          'Unbekanntes Twitch-Event:',
+          type,
+          event
+        );
+    }
+  }
+
+  function scheduleTwitchReconnect(
+    generation
+  ) {
+    clearTimeout(twitchReconnectTimer);
+
+    if (
+      generation !== twitchGeneration ||
+      !twitchAuth?.access_token
+    ) {
+      return;
+    }
+
+    setTwitchStatus(false);
+
+    twitchReconnectTimer = setTimeout(
+      async () => {
+        if (
+          generation !== twitchGeneration ||
+          !twitchAuth?.access_token
+        ) {
+          return;
+        }
+
+        try {
+          await ensureTwitchToken();
+
+          openTwitchEventSubSocket();
+
+        } catch (error) {
+          console.error(
+            'Twitch-Wiederverbindung fehlgeschlagen:',
+            error
+          );
+
+          scheduleTwitchReconnect(
+            generation
+          );
+        }
+      },
+      5000
+    );
+  }
+
+  function openTwitchEventSubSocket(
+    url = TWITCH_EVENTSUB_URL,
+    isReconnect = false
+  ) {
+    if (!twitchUser || !twitchAuth) {
+      return;
+    }
+
+    const generation = ++twitchGeneration;
+
+    if (twitchSocket) {
+      const oldSocket = twitchSocket;
+
+      oldSocket.onclose = null;
+      oldSocket.onmessage = null;
+      oldSocket.onerror = null;
+
+      try {
+        oldSocket.close();
+      } catch (_) {}
+    }
+
+    const socket = new WebSocket(url);
+
+    twitchSocket = socket;
+
+    socket.onopen = () => {
+      if (generation !== twitchGeneration) {
+        return;
+      }
+
+      console.log(
+        'Twitch EventSub WebSocket geöffnet.'
+      );
+    };
+
+    socket.onmessage = async message => {
+      if (generation !== twitchGeneration) {
+        return;
+      }
+
+      let packet;
+
+      try {
+        packet = JSON.parse(message.data);
+      } catch (error) {
+        console.warn(
+          'Ungültige Twitch-Nachricht:',
+          error
+        );
+        return;
+      }
+
+      const metadata = packet.metadata || {};
+      const payload = packet.payload || {};
+
+      const messageType =
+        metadata.message_type;
+
+      if (
+        !rememberEventId(
+          metadata.message_id
+        )
+      ) {
+        return;
+      }
+
+      if (
+        messageType ===
+        'session_welcome'
+      ) {
+        twitchSessionId =
+          payload.session?.id || null;
+
+        if (!twitchSessionId) {
+          console.warn(
+            'Twitch hat keine Session-ID geliefert.'
+          );
+          return;
+        }
+
+        setTwitchStatus(
+          true,
+          twitchUser.display_name ||
+          twitchUser.login
+        );
+
+        if (!isReconnect) {
+          await registerEventSubSubscriptions(
+            twitchSessionId
+          );
+        }
+
+        return;
+      }
+
+      if (
+        messageType ===
+        'session_keepalive'
+      ) {
+        return;
+      }
+
+      if (
+        messageType ===
+        'session_reconnect'
+      ) {
+        const reconnectURL =
+          payload.session?.reconnect_url;
+
+        if (reconnectURL) {
+          openTwitchEventSubSocket(
+            reconnectURL,
+            true
+          );
+        }
+
+        return;
+      }
+
+      if (
+        messageType ===
+        'notification'
+      ) {
+        handleTwitchNotification(
+          metadata.subscription_type,
+          payload.event
+        );
+
+        return;
+      }
+
+      if (
+        messageType ===
+        'revocation'
+      ) {
+        console.warn(
+          'EventSub-Berechtigung widerrufen:',
+          payload.subscription
+        );
+      }
+    };
+
+    socket.onerror = error => {
+      if (generation !== twitchGeneration) {
+        return;
+      }
+
+      console.warn(
+        'Twitch WebSocket Fehler:',
+        error
+      );
+    };
+
+    socket.onclose = event => {
+      if (generation !== twitchGeneration) {
+        return;
+      }
+
+      console.warn(
+        'Twitch WebSocket geschlossen:',
+        event.code,
+        event.reason
+      );
+
+      twitchSocket = null;
+      twitchSessionId = null;
+
+      scheduleTwitchReconnect(
+        generation
+      );
+    };
+  }
+
+  // ==========================================
+  // TWITCH VERBINDEN / TRENNEN
+  // ==========================================
+
+  async function restoreTwitchConnection() {
+    if (!twitchAuth?.access_token) {
+      setTwitchStatus(false);
+      return;
+    }
+
+    setText(
+      'twitchInfo',
+      'Twitch-Verbindung wird wiederhergestellt ...'
+    );
+
+    try {
+      await ensureTwitchToken();
+
+      twitchUser = await getTwitchUser();
+
+      setText(
+        'twitchUsername',
+        twitchUser.display_name ||
+        twitchUser.login
+      );
+
+      openTwitchEventSubSocket();
+
+    } catch (error) {
+      console.error(
+        'Twitch-Wiederherstellung fehlgeschlagen:',
+        error
+      );
+
+      setTwitchStatus(false);
+
+      toast(
+        'Twitch konnte nicht automatisch verbunden werden.',
+        5000
+      );
+    }
+  }
+
+  async function disconnectTwitch() {
+    closeTwitchSocket();
+    stopSpeaking();
+
+    const token =
+      twitchAuth?.access_token;
+
+    twitchAuth = null;
+    twitchUser = null;
+    twitchConnecting = false;
+
+    localStorage.removeItem(
+      AUTH_STORAGE_KEY
+    );
+
+    sessionStorage.removeItem(
+      PKCE_STORAGE_KEY
+    );
+
+    setTwitchStatus(false);
+
+    if (token) {
+      try {
+        const body = new URLSearchParams();
+
+        body.set(
+          'client_id',
+          TWITCH_CLIENT_ID
+        );
+
+        body.set(
+          'token',
+          token
+        );
+
+        await fetch(
+          'https://id.twitch.tv/oauth2/revoke',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type':
+                'application/x-www-form-urlencoded'
+            },
+            body
+          }
+        );
+
+      } catch (error) {
+        console.warn(
+          'Token-Widerruf fehlgeschlagen:',
+          error
+        );
+      }
+    }
+
+    toast(
+      'Twitch wurde getrennt.'
+    );
+  }
+
+  function setupTwitchControls() {
+    const buttons = [
+      'twitchConnect',
+      'connectTwitch',
+      'twitchButton'
+    ];
+
+    buttons.forEach(id => {
+      const button = $(id);
+
+      if (!button) return;
+
+      button.addEventListener(
+        'click',
+        async () => {
+          if (twitchAuth?.access_token) {
+            await disconnectTwitch();
+          } else {
+            await connectTwitch();
+          }
+        }
+      );
+    });
+
+    $('twitchDisconnect')?.addEventListener(
+      'click',
+      disconnectTwitch
+    );
+  }
+
+  // ==========================================
+  // EINSTELLUNGEN ANZEIGEN
+  // ==========================================
+
+  function applySettingsToUI() {
+    setChecked(
+      'ttsEnabled',
+      settings.ttsEnabled
+    );
+
+    setChecked(
+      'readNames',
+      settings.readNames
+    );
+
+    setChecked(
+      'followEnabled',
+      settings.followEnabled
+    );
+
+    setChecked(
+      'subEnabled',
+      settings.subEnabled
+    );
+
+    setChecked(
+      'bitsEnabled',
+      settings.bitsEnabled
+    );
+
+    setChecked(
+      'motion',
+      settings.motion
+    );
+
+    setChecked(
+      'soundEnabled',
+      settings.soundEnabled
+    );
+
+    setChecked(
+      'showChatOverlay',
+      settings.showChatOverlay
+    );
+
+    setChecked(
+      'showAlertOverlay',
+      settings.showAlertOverlay
+    );
+
+    setChecked(
+      'overlayShowAvatar',
+      settings.overlayShowAvatar
+    );
+
+    setChecked(
+      'overlayShowBadges',
+      settings.overlayShowBadges
+    );
+
+    setChecked(
+      'overlayChatBackground',
+      settings.overlayChatBackground
+    );
+
+    setChecked(
+      'overlayAlertBackground',
+      settings.overlayAlertBackground
+    );
+
+    setChecked(
+      'overlayChatSound',
+      settings.overlayChatSound
+    );
+
+    setChecked(
+      'overlayAlertSound',
+      settings.overlayAlertSound
+    );
+
+    const values = {
+      volume: settings.volume,
+      rate: settings.rate,
+      duration: settings.duration,
+      accent: settings.accent,
+      testUser: settings.testUser,
+      testMessage: settings.testMessage,
+      alertUser: settings.alertUser,
+      chatInput: settings.chatInput,
+      soundVolume: settings.soundVolume,
+      chatPosition: settings.chatPosition,
+      alertPosition: settings.alertPosition,
+      overlayScale: settings.overlayScale,
+      overlayChatLimit: settings.overlayChatLimit,
+      overlayChatDuration:
+        settings.overlayChatDuration,
+      overlayChatWidth:
+        settings.overlayChatWidth,
+      overlayAlertWidth:
+        settings.overlayAlertWidth,
+      overlayChatAnimation:
+        settings.overlayChatAnimation,
+      overlayAlertAnimation:
+        settings.overlayAlertAnimation,
+      overlayTheme: settings.overlayTheme,
+      overlayFontSize:
+        settings.overlayFontSize,
+      overlayOpacity:
+        settings.overlayOpacity,
+      overlayTestUser:
+        settings.overlayTestUser,
+      overlayTestMessage:
+        settings.overlayTestMessage
+    };
+
+    Object.entries(values).forEach(
+      ([id, value]) => {
+        setValue(id, value);
+      }
+    );
+
+    setText(
+      'volumeValue',
+      formatPercent(settings.volume)
+    );
+
+    setText(
+      'rateValue',
+      `${(settings.rate / 100).toFixed(1)}×`
+    );
+
+    setText(
+      'durationValue',
+      `${settings.duration} Sekunden`
+    );
+
+    setText(
+      'soundVolumeValue',
+      `${settings.soundVolume}%`
+    );
+
+    const overlayValues = {
+      overlayScaleValue:
+        `${settings.overlayScale}%`,
+      overlayChatLimitValue:
+        String(settings.overlayChatLimit),
+      overlayChatDurationValue:
+        `${settings.overlayChatDuration} s`,
+      overlayChatWidthValue:
+        `${settings.overlayChatWidth} px`,
+      overlayAlertWidthValue:
+        `${settings.overlayAlertWidth} px`,
+      overlayFontSizeValue:
+        `${settings.overlayFontSize} px`,
+      overlayOpacityValue:
+        `${settings.overlayOpacity}%`
+    };
+
+    Object.entries(overlayValues).forEach(
+      ([id, value]) => {
+        setText(id, value);
+      }
+    );
+
+    updateTTSStatus();
+    updateSoundStatus();
+    updateOverlayStatus();
+  }
+
+  function updateOverlayStatus() {
+    setText(
+      'overlayCount',
+      '1'
+    );
+  }
+
+  // ==========================================
+  // EINSTELLUNGEN IMPORT / EXPORT
+  // ==========================================
+
+  function exportSettings() {
+    const backup = {
+      application: 'JC Neon Studio',
+      version: '2.2',
+      exportedAt:
+        new Date().toISOString(),
+      settings: {
+        ...settings
+      }
+    };
+
+    // Zugangsdaten werden ausdrücklich
+    // NICHT in das Backup aufgenommen.
 
     const blob = new Blob(
-      [json],
-      { type: 'application/json' }
+      [
+        JSON.stringify(
+          backup,
+          null,
+          2
+        )
+      ],
+      {
+        type: 'application/json'
+      }
     );
 
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement('a');
-    link.href = url;
-    link.download = 'jc-neon-studio-backup.json';
 
-    document.body.append(link);
+    link.href = url;
+    link.download =
+      'JC-Neon-Studio-Backup.json';
+
+    document.body.appendChild(link);
     link.click();
     link.remove();
 
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 1000);
+    URL.revokeObjectURL(url);
 
-    toast('Studio- und Overlay-Einstellungen exportiert.');
-  });
+    toast(
+      'Studio-Backup wurde erstellt.'
+    );
+  }
 
-  // ==========================================
-  // EINSTELLUNGEN IMPORTIEREN
-  // ==========================================
+  async function importSettings(file) {
+    if (!file) return;
 
-  $('importSettings')?.addEventListener('click', () => {
-    $('importSettingsFile')?.click();
-  });
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text);
 
-  $('importSettingsFile')?.addEventListener(
-    'change',
-    async event => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-
-      try {
-        if (file.size > 1024 * 1024) {
-          throw new Error('Die Datei ist zu groß.');
-        }
-
-        const content = await file.text();
-        const backup = JSON.parse(content);
-
-        if (
-          !backup ||
-          backup.application !== 'JC Neon Studio' ||
-          !backup.settings ||
-          typeof backup.settings !== 'object' ||
-          Array.isArray(backup.settings)
-        ) {
-          throw new Error('Ungültige Backup-Datei.');
-        }
-
-        const imported = {};
-
-        for (const key of Object.keys(defaults)) {
-          const value = backup.settings[key];
-          const fallback = defaults[key];
-
-          if (typeof value !== typeof fallback) {
-            continue;
-          }
-
-          if (typeof fallback === 'string') {
-            imported[key] = value.slice(0, 1000);
-          } else if (typeof fallback === 'number') {
-            if (Number.isFinite(value)) {
-              imported[key] = value;
-            }
-          } else if (typeof fallback === 'boolean') {
-            imported[key] = value;
-          }
-        }
-
-        imported.volume = Math.max(
-          0,
-          Math.min(
-            100,
-            Number(imported.volume ?? defaults.volume)
-          )
+      if (
+        !backup ||
+        typeof backup.settings !== 'object' ||
+        Array.isArray(backup.settings) ||
+        backup.settings === null
+      ) {
+        throw new Error(
+          'Ungültige Backup-Datei.'
         );
-
-        imported.rate = Math.max(
-          50,
-          Math.min(
-            200,
-            Number(imported.rate ?? defaults.rate)
-          )
-        );
-
-        imported.duration = Math.max(
-          3,
-          Math.min(
-            15,
-            Number(imported.duration ?? defaults.duration)
-          )
-        );
-
-        settings = {
-          ...defaults,
-          ...imported
-        };
-
-        persist();
-        applySettings();
-        populateVoices();
-
-        if (
-          backup.overlaySettings &&
-          typeof backup.overlaySettings === 'object'
-        ) {
-          if (window.JCOverlay?.importSettings) {
-            window.JCOverlay.importSettings(
-              backup.overlaySettings
-            );
-          } else {
-            toast(
-              'Studio importiert. Overlay-Controller nicht verfügbar.'
-            );
-            return;
-          }
-        }
-
-        toast('Studio- und Overlay-Einstellungen importiert.');
-      } catch (error) {
-        console.error('Import fehlgeschlagen:', error);
-        toast('Import fehlgeschlagen: ' + error.message);
-      } finally {
-        event.target.value = '';
       }
+
+      const imported = {};
+
+      Object.keys(DEFAULTS).forEach(key => {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            backup.settings,
+            key
+          )
+        ) {
+          imported[key] =
+            backup.settings[key];
+        }
+      });
+
+      settings = {
+        ...DEFAULTS,
+        ...imported
+      };
+
+      saveSettings();
+      applySettingsToUI();
+      applyTheme();
+      applyMotion();
+      populateVoices();
+      refreshOverlayPreview();
+      syncOverlaySettings();
+
+      toast(
+        'Studio-Einstellungen erfolgreich importiert.'
+      );
+
+    } catch (error) {
+      console.error(
+        'Backup-Import fehlgeschlagen:',
+        error
+      );
+
+      toast(
+        'Die Backup-Datei konnte nicht importiert werden.'
+      );
     }
-  );
+  }
 
-  // ==========================================
-  // EINSTELLUNGEN ZURÜCKSETZEN
-  // ==========================================
-
-  $('resetSettings')?.addEventListener('click', () => {
-    const confirmed = window.confirm(
-      'Möchtest du wirklich alle Studio-Einstellungen zurücksetzen?'
+  function setupBackupControls() {
+    $('exportSettings')?.addEventListener(
+      'click',
+      exportSettings
     );
 
-    if (!confirmed) return;
+    $('importSettings')?.addEventListener(
+      'change',
+      event => {
+        const file =
+          event.target.files?.[0];
 
-    settings = { ...defaults };
+        importSettings(file);
 
-    persist();
-    applySettings();
+        event.target.value = '';
+      }
+    );
+  }
+
+  // ==========================================
+  // AUTOMATISCHE SPEICHERUNG
+  // ==========================================
+
+  function setupAutomaticSaving() {
+    const ignored = new Set([
+      'twitchConnect',
+      'connectTwitch',
+      'twitchButton',
+      'twitchDisconnect',
+      'resetSettings',
+      'exportSettings',
+      'importSettings'
+    ]);
+
+    document.querySelectorAll(
+      'input[id], select[id], textarea[id]'
+    ).forEach(element => {
+      if (ignored.has(element.id)) {
+        return;
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          DEFAULTS,
+          element.id
+        )
+      ) {
+        return;
+      }
+
+      const key =
+        element.dataset.setting;
+
+      if (
+        !key ||
+        !Object.prototype.hasOwnProperty.call(
+          DEFAULTS,
+          key
+        )
+      ) {
+        return;
+      }
+
+      const save = () => {
+        let value;
+
+        if (element.type === 'checkbox') {
+          value = element.checked;
+        } else if (
+          element.type === 'range' ||
+          element.type === 'number'
+        ) {
+          value = Number(element.value);
+        } else {
+          value = element.value;
+        }
+
+        updateSetting(key, value);
+      };
+
+      element.addEventListener(
+        'input',
+        save
+      );
+
+      element.addEventListener(
+        'change',
+        save
+      );
+    });
+  }
+
+  // ==========================================
+  // BROWSER-SPRACHAUSGABE
+  // ==========================================
+
+  function initializeSpeech() {
+    if (!synth) {
+      console.warn(
+        'Dieser Browser unterstützt keine Sprachausgabe.'
+      );
+
+      setText(
+        'ttsStatus',
+        'NICHT VERFÜGBAR'
+      );
+
+      return;
+    }
+
     populateVoices();
 
-    window.JCOverlay?.resetSettings?.();
-
-    toast('Studio- und Overlay-Einstellungen zurückgesetzt.');
-  });
-
-  // ==========================================
-  // ÖFFENTLICHE STUDIO-SCHNITTSTELLE
-  // ==========================================
-
-  window.JCStreamTools = Object.freeze({
-    version: '2.1.0',
-
-    addChat,
-    triggerAlert,
-    playAlertSound,
-    stopSpeech,
-
-    connectTwitch,
-    disconnectTwitch,
-
-    getSettings() {
-      return { ...settings };
-    },
-
-    getAudioQueueLength() {
-      return audioQueue.length;
-    },
-
-    getConnectionStatus() {
-      return connectionStatus;
-    },
-
-    getTwitchUser() {
-      return twitchUser
-        ? {
-            id: twitchUser.id,
-            login: twitchUser.login,
-            display_name: twitchUser.display_name
-          }
-        : null;
+    if (
+      'onvoiceschanged' in synth
+    ) {
+      synth.onvoiceschanged =
+        populateVoices;
     }
-  });
+
+    // Browser verlangen häufig eine
+    // Benutzerinteraktion, bevor Ton
+    // automatisch abgespielt werden darf.
+    document.addEventListener(
+      'pointerdown',
+      () => {
+        getVoices();
+      },
+      {
+        once: true
+      }
+    );
+  }
 
   // ==========================================
-  // START
+  // TAB-SICHTBARKEIT
   // ==========================================
 
-  console.log(
-    '%c JC NEON STUDIO 2.1 ',
-    'background:#9146ff;color:white;font-size:16px;padding:8px;'
+  function setupVisibilityHandling() {
+    document.addEventListener(
+      'visibilitychange',
+      () => {
+        if (
+          document.visibilityState ===
+          'visible'
+        ) {
+          if (
+            twitchAuth?.access_token &&
+            (!twitchSocket ||
+              twitchSocket.readyState ===
+              WebSocket.CLOSED)
+          ) {
+            restoreTwitchConnection();
+          }
+        }
+      }
+    );
+
+    window.addEventListener(
+      'online',
+      () => {
+        if (twitchAuth?.access_token) {
+          restoreTwitchConnection();
+        }
+      }
+    );
+  }
+
+  // ==========================================
+  // STARTSEITE / STUDIO
+  // ==========================================
+
+  function initializeStudioBranding() {
+    document.title =
+      'JC Neon Studio | Jade & Clarke';
+
+    setText(
+      'studioVersion',
+      '2.2'
+    );
+
+    setText(
+      'studioName',
+      'NEON STUDIO'
+    );
+
+    setText(
+      'studioCompany',
+      'JADE & CLARKE'
+    );
+  }
+
+  // ==========================================
+  // INITIALISIERUNG
+  // ==========================================
+
+  async function initializeApp() {
+    console.log(
+      '%c JC NEON STUDIO 2.2 ',
+      'background:#8b2cff;color:white;' +
+      'padding:8px 16px;font-weight:bold;'
+    );
+
+    initializeStudioBranding();
+
+    applySettingsToUI();
+
+    applyTheme();
+    applyMotion();
+
+    setupNavigation();
+    setupThemeControls();
+    setupTTSControls();
+    setupChatControls();
+    setupAlertControls();
+    setupOverlayControls();
+    setupTwitchControls();
+    setupBackupControls();
+    setupAutomaticSaving();
+    setupVisibilityHandling();
+
+    initializeSpeech();
+
+    refreshOverlayPreview();
+    syncOverlaySettings();
+
+    setTwitchStatus(false);
+
+    try {
+      await handleOAuthCallback();
+
+      if (twitchAuth?.access_token) {
+        await restoreTwitchConnection();
+      }
+
+    } catch (error) {
+      console.error(
+        'Fehler beim Starten von Twitch:',
+        error
+      );
+
+      setTwitchStatus(false);
+    }
+
+    console.log(
+      'JC Neon Studio wurde gestartet.'
+    );
+  }
+
+  // ==========================================
+  // APP STARTEN
+  // ==========================================
+
+  if (
+    document.readyState === 'loading'
+  ) {
+    document.addEventListener(
+      'DOMContentLoaded',
+      initializeApp,
+      {
+        once: true
+      }
+    );
+  } else {
+    initializeApp();
+  }
+
+  // ==========================================
+  // APP SCHLIESSEN
+  // ==========================================
+
+  window.addEventListener(
+    'pagehide',
+    () => {
+      closeTwitchSocket();
+      stopSpeaking();
+      stopAllSounds();
+    }
   );
 
-  console.log('Einstellungen: geladen');
-  console.log('Automatisches Speichern: aktiv');
-  console.log('Emoji-Filter: aktiv');
-  console.log('Chat-TTS: bereit');
-  console.log('Overlay-Backup: integriert');
-  console.log('Follower-Sound:', soundFiles.follow);
-  console.log('Abo-Sound:', soundFiles.sub);
-  console.log('Bits-Sound:', soundFiles.bits);
-  console.log('Twitch OAuth PKCE: eingerichtet');
 })();
