@@ -3124,3 +3124,203 @@
   );
 
 })();
+
+
+/* =====================================================
+   JC NEON STUDIO – DESIGN REPAIR 2.3
+   Jade & Clarke
+   ===================================================== */
+
+(() => {
+  "use strict";
+
+  const STORAGE_KEY = "jc_neon_studio_v2";
+
+  const THEMES = {
+    purple: {
+      accent: "#b43cff",
+      accent2: "#00dfff",
+      glow: "180, 60, 255"
+    },
+    pink: {
+      accent: "#ff1493",
+      accent2: "#ff69b4",
+      glow: "255, 20, 147"
+    },
+    cyan: {
+      accent: "#00e5ff",
+      accent2: "#00b8ff",
+      glow: "0, 229, 255"
+    },
+    red: {
+      accent: "#ff334f",
+      accent2: "#ff8092",
+      glow: "255, 51, 79"
+    }
+  };
+
+  function readSettings() {
+    try {
+      return JSON.parse(
+        localStorage.getItem(STORAGE_KEY) || "{}"
+      );
+    } catch {
+      return {};
+    }
+  }
+
+  function saveSettings(changes) {
+    const settings = {
+      ...readSettings(),
+      ...changes
+    };
+
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(settings)
+    );
+  }
+
+  function normalizeTheme(value) {
+    const name = String(value || "purple")
+      .toLowerCase()
+      .trim();
+
+    const aliases = {
+      "hot-pink": "pink",
+      "hotpink": "pink",
+      "electric-cyan": "cyan",
+      "electric cyan": "cyan",
+      "electriccan": "cyan",
+      "neon-pink": "pink",
+      "neon-cyan": "cyan"
+    };
+
+    const normalized = aliases[name] || name;
+
+    return THEMES[normalized]
+      ? normalized
+      : "purple";
+  }
+
+  function applyTheme(value) {
+    const themeName = normalizeTheme(value);
+    const theme = THEMES[themeName];
+
+    const root = document.documentElement;
+
+    root.style.setProperty(
+      "--accent",
+      theme.accent
+    );
+
+    root.style.setProperty(
+      "--accent2",
+      theme.accent2
+    );
+
+    root.style.setProperty(
+      "--jc-glow-rgb",
+      theme.glow
+    );
+
+    root.dataset.accent = themeName;
+    document.body.dataset.accent = themeName;
+
+    saveSettings({
+      accent: themeName
+    });
+
+    console.log(
+      "[JC Neon Studio] Theme:",
+      themeName
+    );
+  }
+
+  function applyMotion(enabled) {
+    const active = Boolean(enabled);
+
+    document.body.classList.toggle(
+      "no-motion",
+      !active
+    );
+
+    document.body.classList.toggle(
+      "reduce-motion",
+      !active
+    );
+
+    document.documentElement.classList.toggle(
+      "reduce-motion",
+      !active
+    );
+
+    saveSettings({
+      motion: active
+    });
+  }
+
+  function initializeDesign() {
+    const settings = readSettings();
+
+    const accentSelect =
+      document.getElementById("accent");
+
+    const motionToggle =
+      document.getElementById("motion");
+
+    applyTheme(settings.accent || "purple");
+
+    applyMotion(settings.motion !== false);
+
+    if (accentSelect) {
+      const current = normalizeTheme(
+        settings.accent
+      );
+
+      const matchingOption = Array.from(
+        accentSelect.options
+      ).find(option =>
+        normalizeTheme(option.value) === current
+      );
+
+      if (matchingOption) {
+        accentSelect.value = matchingOption.value;
+      }
+
+      accentSelect.addEventListener(
+        "change",
+        () => {
+          applyTheme(accentSelect.value);
+        }
+      );
+    }
+
+    if (motionToggle) {
+      motionToggle.checked =
+        settings.motion !== false;
+
+      motionToggle.addEventListener(
+        "change",
+        () => {
+          applyMotion(motionToggle.checked);
+        }
+      );
+    }
+
+    console.log(
+      "[JC Neon Studio] Design bereit."
+    );
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      initializeDesign,
+      { once: true }
+    );
+  } else {
+    initializeDesign();
+  }
+
+})();
