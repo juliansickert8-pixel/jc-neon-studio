@@ -1963,7 +1963,7 @@
       $('twitchConnect') ||
       $('connectTwitch') ||
       $('twitchBtn');
-      
+
     if (button) {
       button.textContent = connected
         ? 'Twitch trennen'
@@ -2531,8 +2531,9 @@
     const buttons = [
       'twitchConnect',
       'connectTwitch',
-      'twitchButton'
-    ];
+      'twitchButton',
+      'twitchBtn'
+];
 
     buttons.forEach(id => {
       const button = $(id);
