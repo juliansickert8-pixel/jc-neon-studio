@@ -1962,8 +1962,8 @@
     const button =
       $('twitchConnect') ||
       $('connectTwitch') ||
-      $('twitchButton');
-
+      $('twitchBtn');
+      
     if (button) {
       button.textContent = connected
         ? 'Twitch trennen'
