@@ -1,0 +1,686 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080711">
+  <meta name="description" content="JC Neon Studio – Streaming-Dashboard von Jade & Clarke für Twitch, TTS, Alerts und OBS.">
+  <title>JC Neon Studio | Jade & Clarke</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="ambient" aria-hidden="true"></div>
+
+<div class="shell">
+
+  <!-- SEITENLEISTE -->
+  <aside class="sidebar">
+
+    <div class="brand">
+      <div class="brand-icon" id="studioLogo">JC</div>
+      <div>
+        <b>NEON STUDIO</b>
+        <small>JADE & CLARKE</small>
+      </div>
+    </div>
+
+    <div class="profile">
+      <img src="assets/avatar.png" alt="Faulie Gamer">
+      <div>
+        <strong id="studioProfileName">FAULIE_GAMER</strong>
+        <span>
+          <i class="dot amber" id="profileConnectionDot"></i>
+          Studio Dashboard
+        </span>
+      </div>
+    </div>
+
+    <div class="nav-label">WORKSPACE</div>
+
+    <nav aria-label="Hauptnavigation">
+      <button class="nav active" data-page="dashboard" type="button">
+        ◈ <span>Übersicht</span>
+      </button>
+      <button class="nav" data-page="tts" type="button">
+        ◉ <span>Chat & TTS</span>
+      </button>
+      <button class="nav" data-page="alerts" type="button">
+        ✧ <span>Stream-Alerts</span>
+      </button>
+      <button class="nav" data-page="overlay" type="button">
+        ▣ <span>OBS-Overlays</span>
+      </button>
+      <button class="nav" data-page="settings" type="button">
+        ⚙ <span>Einstellungen</span>
+      </button>
+    </nav>
+
+    <div class="side-bottom">
+      <div class="side-info">
+        <span class="dot amber" id="sideConnectionDot"></span>
+        <div>
+          <b id="sideConnectionStatus">Nicht verbunden</b>
+          <small id="sideConnectionDetail">
+            Twitch-Verbindung ausstehend
+          </small>
+        </div>
+      </div>
+      <small>JC NEON STUDIO · VERSION 2.0</small>
+    </div>
+
+  </aside>
+
+  <!-- HAUPTBEREICH -->
+  <main>
+
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">JADE & CLARKE · STREAMING CONTROL CENTER</div>
+        <h1 id="pageTitle">Dein Stream. Deine Kontrolle.</h1>
+      </div>
+
+      <div class="top-actions">
+        <span class="pill" id="connectionPill" role="status">
+          <span class="dot amber" id="connectionDot"></span>
+          <span id="connectionStatus">NICHT VERBUNDEN</span>
+        </span>
+        <button class="btn outline" id="twitchBtn" type="button">
+          Twitch verbinden ↗
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- =====================================
+           ÜBERSICHT
+      ====================================== -->
+      <section class="page active" id="dashboard">
+
+        <div class="hero">
+          <img src="assets/banner.png" alt="Faulie Gamer Banner">
+          <div class="hero-shade"></div>
+
+          <div class="hero-content">
+            <span class="hero-kicker">WELCOME TO JC NEON STUDIO</span>
+            <h2>
+              LEVEL UP<br>
+              <em>YOUR STREAM.</em>
+            </h2>
+            <p>
+              Dein persönliches Streaming-Kontrollzentrum
+              für Chat, Sprache, Benachrichtigungen und OBS.
+            </p>
+            <button class="btn primary" data-goto="tts" type="button">
+              TTS konfigurieren →
+            </button>
+          </div>
+        </div>
+
+        <div class="stats">
+
+          <div class="stat">
+            <span>TWITCH-VERBINDUNG</span>
+            <strong id="connectionStat">OFFLINE</strong>
+            <small id="connectionStatDetail">
+              Twitch noch nicht verbunden
+            </small>
+          </div>
+
+          <div class="stat">
+            <span>CHAT-TTS</span>
+            <strong id="ttsStatus">AKTIV</strong>
+            <small>Browser-Sprachausgabe</small>
+          </div>
+
+          <div class="stat">
+            <span>ALERT-SOUNDS</span>
+            <strong>3</strong>
+            <small>Follower · Abo · Bits</small>
+          </div>
+
+          <div class="stat">
+            <span>OBS-OVERLAY</span>
+            <strong>1</strong>
+            <small>Kombiniertes Chat-Overlay</small>
+          </div>
+
+        </div>
+
+        <div class="twocol">
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">CHAT CONTROL</span>
+                <h3>Chat & Testnachrichten</h3>
+              </div>
+              <span class="tag" id="chatModeTag">TESTBEREICH</span>
+            </div>
+
+            <div class="chat-feed" id="chatFeed" aria-live="polite">
+              <div class="chat-line">
+                <span class="username">System</span>
+                <span>Willkommen bei JC Neon Studio! 💜</span>
+              </div>
+            </div>
+
+            <div class="send">
+              <input
+                id="chatInput"
+                maxlength="300"
+                placeholder="Testnachricht eingeben …"
+                autocomplete="off"
+              >
+              <button class="btn primary" id="sendChat" type="button">
+                Senden ↗
+              </button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">QUICK ACTIONS</span>
+                <h3>Alert-Sounds testen</h3>
+              </div>
+            </div>
+
+            <div class="quick">
+              <button data-test="follow" type="button">
+                <span class="quick-icon">♡</span>
+                <b>Follower</b>
+                <small>Sound testen</small>
+              </button>
+
+              <button data-test="sub" type="button">
+                <span class="quick-icon">★</span>
+                <b>Abo / Sub</b>
+                <small>Sound testen</small>
+              </button>
+
+              <button data-test="bits" type="button">
+                <span class="quick-icon">◆</span>
+                <b>Bits</b>
+                <small>Sound testen</small>
+              </button>
+            </div>
+
+            <div class="preview-card">
+              <img src="assets/offline.png" alt="Faulie Gamer Offline Banner">
+              <div>
+                <b>Dein Stream. Dein Branding.</b>
+                <small>Jade & Clarke · JC Neon Studio</small>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- =====================================
+           CHAT UND TTS
+      ====================================== -->
+      <section class="page" id="tts">
+
+        <div class="section-intro">
+          <span class="eyebrow">VOICE CONTROL</span>
+          <h2>Chat & Text-to-Speech</h2>
+          <p>Bestimme, wie Chatnachrichten vorgelesen werden.</p>
+        </div>
+
+        <div class="twocol">
+
+          <div class="panel">
+            <h3>Sprachausgabe</h3>
+
+            <label class="toggle-line">
+              <span>
+                <b>TTS aktivieren</b>
+                <small>Neue Chatnachrichten automatisch vorlesen</small>
+              </span>
+              <input type="checkbox" id="ttsEnabled" checked>
+              <span class="switch"></span>
+            </label>
+
+            <label class="field">
+              Stimme
+              <select id="voiceSelect"></select>
+            </label>
+
+            <label class="field">
+              Lautstärke
+              <output id="volumeValue">85 %</output>
+              <input type="range" id="volume" min="0" max="100" value="85">
+            </label>
+
+            <label class="field">
+              Sprechtempo
+              <output id="rateValue">1.0×</output>
+              <input type="range" id="rate" min="50" max="200" value="100">
+            </label>
+
+            <label class="toggle-line">
+              <span>
+                <b>Benutzernamen vorlesen</b>
+                <small>„Name schreibt: Nachricht“</small>
+              </span>
+              <input type="checkbox" id="readNames" checked>
+              <span class="switch"></span>
+            </label>
+
+            <div class="actions">
+              <button class="btn primary" id="testVoice" type="button">
+                Stimme testen ▶
+              </button>
+              <button class="btn outline" id="stopVoice" type="button">
+                Vorlesen stoppen ■
+              </button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Nachricht testen</h3>
+
+            <label class="field">
+              Benutzername
+              <input id="testUser" value="FaulieFan" maxlength="50">
+            </label>
+
+            <label class="field">
+              Nachricht
+              <textarea id="testMessage" rows="5">Hey Faulie! Dein Stream sieht heute mega aus! 💜</textarea>
+            </label>
+
+            <button class="btn primary wide" id="testMessageBtn" type="button">
+              Nachricht senden & vorlesen →
+            </button>
+
+            <div class="note">
+              Emojis bleiben im Chat sichtbar, werden aber nicht vorgelesen.
+              Die gewählte Stimme hängt von deinem Browser und Windows ab.
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- =====================================
+           STREAM-ALERTS
+      ====================================== -->
+      <section class="page" id="alerts">
+
+        <div class="section-intro">
+          <span class="eyebrow">SOUND ENGINE</span>
+          <h2>Follower, Abos & Bits</h2>
+          <p>Deine eigenen M4A-Sounds – ohne sichtbare Videoeinblendung.</p>
+        </div>
+
+        <div class="twocol">
+
+          <div class="panel">
+            <h3>Sound-Einstellungen</h3>
+
+            <label class="toggle-line">
+              <span>
+                <b>Follower-Sound</b>
+                <small>jc_alert_follower.m4a · ca. 3 Sekunden</small>
+              </span>
+              <input type="checkbox" id="followEnabled" checked>
+              <span class="switch"></span>
+            </label>
+
+            <label class="toggle-line">
+              <span>
+                <b>Abo-Sound (Sub)</b>
+                <small>jc_alert_sub.m4a · ca. 6 Sekunden</small>
+              </span>
+              <input type="checkbox" id="subEnabled" checked>
+              <span class="switch"></span>
+            </label>
+
+            <label class="toggle-line">
+              <span>
+                <b>Bits-Sound</b>
+                <small>jc_alert_bits.m4a · ab 1 Bit</small>
+              </span>
+              <input type="checkbox" id="bitsEnabled" checked>
+              <span class="switch"></span>
+            </label>
+
+            <label class="field">
+              Vorschau-Anzeigedauer
+              <output id="durationValue">6 Sekunden</output>
+              <input type="range" id="duration" min="3" max="15" value="6">
+            </label>
+
+            <label class="field">
+              Test-Benutzername
+              <input id="alertUser" value="NeonSloth" maxlength="50">
+            </label>
+
+            <div class="quick">
+              <button data-test="follow" type="button">♡ <b>Follower testen</b></button>
+              <button data-test="sub" type="button">★ <b>Abo testen</b></button>
+              <button data-test="bits" type="button">◆ <b>Bits testen</b></button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Sound-Vorschau</h3>
+
+            <div class="alert-stage">
+              <div class="alert-stage-inner" id="alertPreview">
+                <div class="placeholder-icon">♫</div>
+                <b>DEINE ALERT-SOUNDS</b>
+                <small>Wähle einen Test aus.</small>
+              </div>
+            </div>
+
+            <div class="note">
+              Deine Sounds werden als Audio abgespielt.
+              Es wird kein Video im Stream eingeblendet.
+              Die Vorschau hier im Dashboard dient nur zum Testen.
+            </div>
+
+            <div class="note">
+              Echte Twitch-Ereignisse funktionieren erst nach
+              Einrichtung der Twitch-Verbindung.
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- =====================================
+           OBS OVERLAYS
+      ====================================== -->
+      <section class="page" id="overlay">
+
+        <div class="section-intro">
+          <span class="eyebrow">OBS INTEGRATION</span>
+          <h2>Ein Overlay. Alles im Blick.</h2>
+          <p>
+            Eine gemeinsame Browserquelle für den Chat.
+            Sichtbare Alerts kannst du bei Bedarf zuschalten.
+          </p>
+        </div>
+
+        <div class="panel space">
+          <div class="panel-head">
+            <div>
+              <span class="eyebrow">LIVE PREVIEW</span>
+              <h3>Kombiniertes Stream-Overlay</h3>
+            </div>
+            <span class="tag">VORSCHAU</span>
+          </div>
+
+          <iframe
+            id="combinedOverlayPreview"
+            src="overlay.html?preview=1"
+            title="JC Neon Studio Overlay-Vorschau"
+            loading="lazy"
+            style="display:block;width:100%;aspect-ratio:16/9;min-height:280px;border:1px solid #8b55c955;border-radius:14px;background:#0c0b1d"
+          ></iframe>
+
+          <div class="actions" style="margin-top:15px">
+            <button class="btn primary" id="ov_openWindow" type="button">
+              Als Fenster öffnen ↗
+            </button>
+            <button class="btn outline" id="ov_copyUrl" type="button">
+              OBS-Adresse kopieren
+            </button>
+          </div>
+        </div>
+
+        <div class="twocol space">
+
+          <div class="panel">
+            <h3>Anzeige & Position</h3>
+
+            <label class="toggle-line">
+              <span>
+                <b>Chat anzeigen</b>
+                <small>Nachrichten im Stream sichtbar machen</small>
+              </span>
+              <input type="checkbox" id="ov_chatEnabled" checked>
+              <span class="switch"></span>
+            </label>
+
+            <label class="toggle-line">
+              <span>
+                <b>Sichtbare Alerts anzeigen</b>
+                <small>Optional – deine Sounds funktionieren unabhängig davon</small>
+              </span>
+              <input type="checkbox" id="ov_alertsEnabled">
+              <span class="switch"></span>
+            </label>
+
+            <label class="field">
+              Chat-Abstand links
+              <output id="ov_chatX_value">3</output> %
+              <input id="ov_chatX" type="range" min="0" max="60" value="3">
+            </label>
+
+            <label class="field">
+              Chat-Abstand unten
+              <output id="ov_chatY_value">5</output> %
+              <input id="ov_chatY" type="range" min="0" max="70" value="5">
+            </label>
+
+            <label class="field">
+              Alert-Abstand rechts
+              <output id="ov_alertX_value">4</output> %
+              <input id="ov_alertX" type="range" min="0" max="60" value="4">
+            </label>
+
+            <label class="field">
+              Alert-Abstand oben
+              <output id="ov_alertY_value">7</output> %
+              <input id="ov_alertY" type="range" min="0" max="70" value="7">
+            </label>
+
+            <label class="field">
+              Chat-Anzeigezeit
+              <output id="ov_chatLife_value">15</output> Sekunden
+              <input id="ov_chatLife" type="range" min="3" max="60" value="15">
+            </label>
+
+            <label class="field">
+              Alert-Anzeigezeit
+              <output id="ov_alertDuration_value">6</output> Sekunden
+              <input id="ov_alertDuration" type="range" min="2" max="20" value="6">
+            </label>
+          </div>
+
+          <div class="panel">
+            <h3>Overlay testen</h3>
+
+            <p class="muted">
+              Teste direkt im Dashboard, ohne ein zusätzliches
+              Browserfenster öffnen zu müssen.
+            </p>
+
+            <div class="actions">
+              <button class="btn primary" id="ov_testChat" type="button">
+                Chat testen
+              </button>
+              <button class="btn outline" data-overlay-alert="follow" type="button">
+                ♡ Follower
+              </button>
+              <button class="btn outline" data-overlay-alert="sub" type="button">
+                ★ Abo
+              </button>
+              <button class="btn outline" data-overlay-alert="bits" type="button">
+                ◆ Bits
+              </button>
+            </div>
+
+            <div class="note">
+              Die drei Overlay-Alert-Buttons testen die sichtbaren
+              Animationen. Deine Audio-Tests findest du unter
+              „Stream-Alerts“.
+            </div>
+
+            <div class="note">
+              Für OBS benötigst du eine Browserquelle mit
+              <code>overlay.html?obs=1</code>.
+              Die zuverlässige Live-Synchronisierung mit OBS
+              wird noch eingerichtet.
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- =====================================
+           EINSTELLUNGEN
+      ====================================== -->
+      <section class="page" id="settings">
+
+        <div class="section-intro">
+          <span class="eyebrow">PERSONALIZE YOUR STUDIO</span>
+          <h2>Studio-Einstellungen</h2>
+          <p>Deine Einstellungen. Dein Design. Deine Kontrolle.</p>
+        </div>
+
+        <div class="twocol">
+
+          <div class="panel">
+            <h3>Profil & Personalisierung</h3>
+
+            <label class="field">
+              Twitch-Benutzername
+              <input
+                id="studioUsername"
+                value="faulie_gamer"
+                maxlength="50"
+                autocomplete="off"
+                placeholder="Dein Twitch-Benutzername"
+              >
+            </label>
+
+            <label class="field">
+              Anzeigename im Studio
+              <input
+                id="studioDisplayName"
+                value="FAULIE_GAMER"
+                maxlength="50"
+                autocomplete="off"
+                placeholder="Dein Anzeigename"
+              >
+            </label>
+
+            <div class="note">
+              Diese Felder dienen der Personalisierung.
+              Sie melden dich noch nicht bei Twitch an.
+              Das automatische Speichern ergänzen wir in app.js.
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <h3>Darstellung</h3>
+
+            <label class="field">
+              Akzentfarbe
+              <select id="accent">
+                <option value="purple">Neon Purple</option>
+                <option value="cyan">Electric Cyan</option>
+                <option value="pink">Hot Pink</option>
+              </select>
+            </label>
+
+            <label class="toggle-line">
+              <span>
+                <b>Hintergrundanimationen</b>
+                <small>Langsame, bewegte Neon-Lichteffekte</small>
+              </span>
+              <input type="checkbox" id="motion" checked>
+              <span class="switch"></span>
+            </label>
+          </div>
+
+          <div class="panel">
+            <h3>Twitch-Verbindung</h3>
+
+            <div class="connection">
+              <span class="dot amber" id="settingsConnectionDot"></span>
+              <div>
+                <b id="settingsConnectionStatus">Nicht verbunden</b>
+                <small id="settingsConnectionDetail">
+                  Twitch-Anmeldung noch nicht eingerichtet
+                </small>
+              </div>
+            </div>
+
+            <button class="btn primary" id="twitchInfo" type="button">
+              Twitch-Integration erklären ↗
+            </button>
+
+            <div class="settings-divider"></div>
+
+            <h3>Daten & Einstellungen</h3>
+
+            <p class="muted">
+              Deine Studio-Einstellungen sollen automatisch
+              gespeichert und beim nächsten Öffnen wieder
+              geladen werden.
+            </p>
+
+            <div class="actions">
+              <button class="btn outline" id="exportSettings" type="button">
+                Einstellungen exportieren
+              </button>
+              <button class="btn outline" id="importSettings" type="button">
+                Einstellungen importieren
+              </button>
+            </div>
+
+            <input
+              type="file"
+              id="importSettingsFile"
+              accept=".json,application/json"
+              hidden
+            >
+
+            <div class="note">
+              Die Export- und Importfunktion wird im nächsten
+              JavaScript-Update ergänzt. So kannst du deine
+              Konfiguration auch beim Browserwechsel sichern.
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <button class="btn outline" id="resetSettings" type="button">
+              Einstellungen zurücksetzen
+            </button>
+
+            <div class="note">
+              Hinweis: Stream-Schlüssel, Twitch-Passwörter und
+              Client-Secrets gehören niemals in öffentliche
+              HTML- oder JavaScript-Dateien.
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+
+    <footer>
+      © 2026 JADE & CLARKE
+      <span>JC NEON STUDIO · BUILT FOR CREATORS</span>
+    </footer>
+
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script defer src="app.js"></script>
+<script defer src="overlay-controller.js"></script>
+
+</body>
+</html>
